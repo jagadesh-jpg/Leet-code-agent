@@ -171,12 +171,16 @@ def test_mock_network_error_mapping():
 
 
 @pytest.mark.skipif(
-    not bool(os.getenv("GEMINI_API_KEY")),
-    reason="GEMINI_API_KEY not present in environment; skipping live network test."
+    os.getenv("RUN_LIVE_GEMINI_TEST", "").strip().lower() not in ("1", "true", "yes"),
+    reason="Live Gemini network test is opt-in. Set RUN_LIVE_GEMINI_TEST=1 to enable."
 )
 def test_live_gemini_api_call():
-    """Live smoke test executed only when a real GEMINI_API_KEY is present in the environment."""
+    """Live smoke test executed only when explicitly opted in via RUN_LIVE_GEMINI_TEST=1."""
+    if not os.getenv("GEMINI_API_KEY", "").strip():
+        pytest.skip("GEMINI_API_KEY not configured or empty; skipping live network test.")
+
     provider = get_llm_provider("gemini")
     resp = provider.generate_text("Say exactly: 'READY'")
     assert resp.text is not None
     assert len(resp.text) > 0
+

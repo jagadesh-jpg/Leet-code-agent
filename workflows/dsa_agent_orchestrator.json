@@ -1,0 +1,192 @@
+{
+  "name": "DSA Autonomous Agent Orchestrator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "dsa-solve",
+        "options": {}
+      },
+      "id": "webhook-trigger-node",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "dsa-agent-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nif (!body.problem || !body.problem.statement) {\n  throw new Error('Validation Error: Problem statement is required.');\n}\nreturn [{\n  json: {\n    problem: body.problem,\n    language: body.language || 'python',\n    options: body.options || { max_attempts: 3 },\n    idempotency_key: body.idempotency_key || ('req_' + Date.now())\n  }\n}];"
+      },
+      "id": "validate-request-node",
+      "name": "Validate Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8000/api/v1/problems/solve?async_run=false",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-API-Key",
+              "value": "dev-secret-key-change-me"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "http-solve-node",
+      "name": "Call Python Agent API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.final_status }}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "VERIFIED"
+            },
+            {
+              "value2": "FAILED"
+            },
+            {
+              "value2": "MAX_ATTEMPTS_REACHED"
+            },
+            {
+              "value2": "INFRASTRUCTURE_ERROR"
+            }
+          ]
+        }
+      },
+      "id": "switch-state-node",
+      "name": "Switch on Agent State",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 2,
+      "position": [960, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = $input.first().json;\nreturn [{\n  json: {\n    orchestration_status: 'SUCCESS',\n    verified: true,\n    job_id: res.job_id,\n    problem_id: res.problem_id,\n    language: res.language,\n    verified_code: res.verified_code,\n    complexity: res.verification_report ? res.verification_report.complexity_audit.inferred_time_complexity : null,\n    total_attempts: res.attempt_count\n  }\n}];"
+      },
+      "id": "format-verified-node",
+      "name": "Format Verified Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1220, 160]
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = $input.first().json;\nreturn [{\n  json: {\n    orchestration_status: 'FAILED_ALGORITHMIC',\n    verified: false,\n    job_id: res.job_id,\n    problem_id: res.problem_id,\n    error_summary: res.error_summary,\n    total_attempts: res.attempt_count\n  }\n}];"
+      },
+      "id": "format-failed-node",
+      "name": "Format Failed Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1220, 280]
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = $input.first().json;\nreturn [{\n  json: {\n    orchestration_status: 'EXCEEDED_ATTEMPTS',\n    verified: false,\n    job_id: res.job_id,\n    problem_id: res.problem_id,\n    error_summary: res.error_summary,\n    total_attempts: res.attempt_count\n  }\n}];"
+      },
+      "id": "format-max-attempts-node",
+      "name": "Format Max Attempts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1220, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = $input.first().json;\nreturn [{\n  json: {\n    orchestration_status: 'INFRASTRUCTURE_ERROR',\n    verified: false,\n    job_id: res.job_id,\n    problem_id: res.problem_id,\n    error_summary: res.error_summary\n  }\n}];"
+      },
+      "id": "format-infra-error-node",
+      "name": "Format Infrastructure Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1220, 520]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Request": {
+      "main": [
+        [
+          {
+            "node": "Call Python Agent API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Python Agent API": {
+      "main": [
+        [
+          {
+            "node": "Switch on Agent State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch on Agent State": {
+      "main": [
+        [
+          {
+            "node": "Format Verified Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Failed Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Max Attempts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Infrastructure Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

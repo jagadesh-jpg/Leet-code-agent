@@ -1,0 +1,93 @@
+[
+  {
+    "problem_id": "find-all-numbers-disappeared-in-array",
+    "title": "Find All Numbers Disappeared in an Array",
+    "category": "HASH_TABLE",
+    "language": "python",
+    "attempts_used": 2,
+    "final_state": "VERIFIED",
+    "is_verified": true,
+    "execution_time_seconds": 53.92,
+    "code_provenance": "LIVE_MODEL",
+    "error_summary": null,
+    "is_infrastructure_failure": false
+  },
+  {
+    "problem_id": "substrings-size-three-distinct-chars",
+    "title": "Substrings of Size Three with Distinct Characters",
+    "category": "SLIDING_WINDOW",
+    "language": "python",
+    "attempts_used": 1,
+    "final_state": "FAILED",
+    "is_verified": false,
+    "execution_time_seconds": 3.3,
+    "code_provenance": "LIVE_MODEL",
+    "error_summary": "Solution passed tests but failed final verification: FAILED_COMPLEXITY. Space complexity inconsistency: Plan expected O(1) auxiliary space, but implementation exhibits O(N) auxiliary space usage.",
+    "is_infrastructure_failure": false
+  },
+  {
+    "problem_id": "find-center-of-star-graph",
+    "title": "Find Center of Star Graph",
+    "category": "GRAPH",
+    "language": "python",
+    "attempts_used": 1,
+    "final_state": "VERIFIED",
+    "is_verified": true,
+    "execution_time_seconds": 3.33,
+    "code_provenance": "LIVE_MODEL",
+    "error_summary": null,
+    "is_infrastructure_failure": false
+  },
+  {
+    "problem_id": "arranging-coins",
+    "title": "Arranging Coins",
+    "category": "BINARY_SEARCH",
+    "language": "java",
+    "attempts_used": 1,
+    "final_state": "VERIFIED",
+    "is_verified": true,
+    "execution_time_seconds": 4.79,
+    "code_provenance": "LIVE_MODEL",
+    "error_summary": null,
+    "is_infrastructure_failure": false
+  },
+  {
+    "problem_id": "truncate-sentence-words",
+    "title": "Truncate Sentence",
+    "category": "STRING",
+    "language": "java",
+    "attempts_used": 1,
+    "final_state": "VERIFIED",
+    "is_verified": true,
+    "execution_time_seconds": 5.06,
+    "code_provenance": "LIVE_MODEL",
+    "error_summary": null,
+    "is_infrastructure_failure": false
+  },
+  {
+    "problem_id": "remove-element-val",
+    "title": "Remove Element",
+    "category": "TWO_POINTERS",
+    "language": "cpp",
+    "attempts_used": 1,
+    "final_state": "VERIFIED",
+    "is_verified": true,
+    "execution_time_seconds": 4.42,
+    "code_provenance": "LIVE_MODEL",
+    "error_summary": null,
+    "is_infrastructure_failure": false
+  },
+  {
+    "problem_id": "unseen-stage28-infra-isolated",
+    "title": "Stage 28 Infrastructure Toolchain Isolation",
+    "category": "STRING",
+    "language": "java",
+    "attempts_used": 1,
+    "final_state": "INFRASTRUCTURE_ERROR",
+    "is_verified": false,
+    "execution_time_seconds": 0.05,
+    "code_provenance": "INFRASTRUCTURE_CHECK",
+    "error_summary": "Host toolchain compiler binary unavailable",
+    "is_infrastructure_failure": true
+  }
+]

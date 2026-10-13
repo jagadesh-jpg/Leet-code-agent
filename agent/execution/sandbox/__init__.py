@@ -6,6 +6,7 @@ compilation and execution of untrusted code.
 """
 
 from agent.execution.sandbox.base import BaseSandbox
+from agent.execution.sandbox.docker import DEFAULT_SANDBOX_IMAGE, DockerSandbox
 from agent.execution.sandbox.models import (
     ResourceLimits,
     SandboxExecutionResult,
@@ -14,6 +15,8 @@ from agent.execution.sandbox.models import (
 
 __all__ = [
     "BaseSandbox",
+    "DEFAULT_SANDBOX_IMAGE",
+    "DockerSandbox",
     "ResourceLimits",
     "SandboxExecutionResult",
     "SandboxPolicy",

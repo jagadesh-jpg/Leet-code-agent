@@ -1,4 +1,4 @@
-name: Tests
+name: Tests & Sandbox Verification
 
 on:
   push:
@@ -27,6 +27,47 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run pytest
+      - name: Verify Docker daemon availability
         run: |
-          python -m pytest
+          docker info --format '{{.OSType}}' | grep -i 'linux' || {
+            echo "::error::Linux Docker daemon is required but unavailable."
+            exit 1
+          }
+
+      - name: Build Docker sandbox image
+        run: |
+          docker build -f Dockerfile.sandbox -t agent-sandbox:v1 .
+
+      - name: Inspect and establish expected image identity
+        run: |
+          RAW_ID=$(docker inspect agent-sandbox:v1 --format '{{.Id}}')
+          if [ -z "$RAW_ID" ]; then
+            echo "::error::Failed to extract image ID from docker inspect."
+            exit 1
+          fi
+          echo "Discovered pinned image ID: $RAW_ID"
+          echo "AGENT_SANDBOX_EXPECTED_IMAGE_ID=$RAW_ID" >> "$GITHUB_ENV"
+          echo "AGENT_SANDBOX_IMAGE=agent-sandbox:v1" >> "$GITHUB_ENV"
+          echo "REQUIRE_DOCKER=1" >> "$GITHUB_ENV"
+
+      - name: Verify image identity pre-flight
+        run: |
+          INSPECTED_ID=$(docker inspect "$AGENT_SANDBOX_IMAGE" --format '{{.Id}}')
+          if [ "$INSPECTED_ID" != "$AGENT_SANDBOX_EXPECTED_IMAGE_ID" ]; then
+            echo "::error::Image identity pre-flight mismatch: expected $AGENT_SANDBOX_EXPECTED_IMAGE_ID, got $INSPECTED_ID"
+            exit 1
+          fi
+          echo "Image identity pre-flight check passed."
+
+      - name: Run complete test suite
+        run: |
+          python -m pytest -v
+
+      - name: Run Docker sandbox unit tests
+        run: |
+          python -m pytest tests/test_docker_sandbox_unit.py -v
+
+      - name: Run real Docker sandbox integration tests
+        run: |
+          # Fails immediately if Docker is missing or if any test fails or unexpectedly skips
+          python -m pytest tests/test_docker_sandbox_integration.py -v --strict-markers -ra

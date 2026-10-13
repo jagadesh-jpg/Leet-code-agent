@@ -1,0 +1,40 @@
+# Dockerfile for Hardened Multi-Language Code Execution Sandbox
+# Tag convention: agent-sandbox:v1
+# Base: Ubuntu 24.04 LTS (Noble)
+FROM ubuntu:24.04
+
+# Prevent interactive prompts during installation
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
+
+# Install full toolchains:
+# - build-essential provides gcc, g++, make, libc6-dev, binutils (ld, as, ar)
+# - python3 and python3-minimal for Python executions
+# - default-jdk-headless for Java compile (javac) and execution (java)
+# - coreutils for standard CLI execution tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    python3 \
+    python3-minimal \
+    default-jdk-headless \
+    coreutils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root unprivileged sandbox user (UID:GID 1000:1000)
+RUN groupadd -g 1000 sandbox && \
+    useradd -u 1000 -g sandbox -m -s /bin/bash sandbox
+
+# Create dedicated sandbox workspace and temp directory with strict permissions
+RUN mkdir -p /workspace /tmp && \
+    chown -R sandbox:sandbox /workspace /tmp && \
+    chmod 777 /tmp
+
+# Default working directory
+WORKDIR /workspace
+
+# Default unprivileged user
+USER 1000:1000
+
+# Default command
+CMD ["/bin/bash"]

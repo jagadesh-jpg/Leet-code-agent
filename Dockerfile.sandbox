@@ -21,9 +21,36 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     coreutils \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root unprivileged sandbox user (UID:GID 1000:1000)
-RUN groupadd -g 1000 sandbox && \
-    useradd -u 1000 -g sandbox -m -s /bin/bash sandbox
+# Create dedicated non-root unprivileged sandbox user (UID:GID 1000:1000).
+# Ubuntu 24.04 (Noble) base image includes a default 'ubuntu' user/group with UID:GID 1000:1000.
+# Safely remove any preexisting account occupying UID/GID 1000, verify vacancy, then provision 'sandbox:sandbox'.
+# Build-time assertions verify username, UID, GID, home directory, and non-root identity.
+RUN set -e; \
+    if id -u 1000 >/dev/null 2>&1; then \
+        PREV_USER="$(id -un 1000)"; \
+        userdel -r "$PREV_USER" || { \
+            echo "Error: Failed to safely remove preexisting user '$PREV_USER' (UID 1000)"; \
+            exit 1; \
+        }; \
+    fi; \
+    if getent group 1000 >/dev/null 2>&1; then \
+        PREV_GROUP="$(getent group 1000 | cut -d: -f1)"; \
+        groupdel "$PREV_GROUP" || { \
+            echo "Error: Failed to safely remove preexisting group '$PREV_GROUP' (GID 1000)"; \
+            exit 1; \
+        }; \
+    fi; \
+    ! id -u 1000 >/dev/null 2>&1 || { echo "Error: UID 1000 still occupied before creation"; exit 1; }; \
+    ! getent group 1000 >/dev/null 2>&1 || { echo "Error: GID 1000 still occupied before creation"; exit 1; }; \
+    groupadd -g 1000 sandbox && \
+    useradd -u 1000 -g 1000 -m -d /home/sandbox -s /bin/bash -c "Sandbox User" sandbox && \
+    [ "$(id -u sandbox)" = "1000" ] && \
+    [ "$(id -g sandbox)" = "1000" ] && \
+    [ "$(id -un sandbox)" = "sandbox" ] && \
+    [ "$(id -gn sandbox)" = "sandbox" ] && \
+    [ "$(id -u sandbox)" != "0" ] && \
+    [ -d "/home/sandbox" ] && \
+    id sandbox
 
 # Create dedicated sandbox workspace and temp directory with strict permissions
 RUN mkdir -p /workspace /tmp && \

@@ -44,13 +44,16 @@ class ProblemIntakeService:
         db_path: str = "agent_queue.db",
         allow_rerun_duplicates: bool = True,
         memory_service: Optional[Any] = None,
+        llm_provider: Optional[Any] = None,
     ):
         self.store = queue_store or SQLiteQueueStore(db_path=db_path)
         self.memory_service = memory_service
+        self.llm = llm_provider
         self.runner = queue_runner or AutonomousQueueRunner(
             store=self.store,
             allow_duplicates=allow_rerun_duplicates,
             memory_service=self.memory_service,
+            llm_provider=self.llm,
         )
         self.allow_rerun_duplicates = allow_rerun_duplicates
 

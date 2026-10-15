@@ -7,7 +7,7 @@ import json
 import shutil
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from agent.core.models import (
     SupportedLanguage,
     ProblemSpec,
@@ -15,6 +15,94 @@ from agent.core.models import (
     ExecutionResult,
 )
 from agent.execution.base import BaseLanguageAdapter
+
+
+class ListNode:
+    """Standard LeetCode singly-linked list node."""
+    def __init__(self, val: int = 0, next: Optional["ListNode"] = None):
+        self.val = val
+        self.next = next
+
+    def __repr__(self) -> str:
+        vals = []
+        curr = self
+        visited = set()
+        while curr and id(curr) not in visited:
+            visited.add(id(curr))
+            vals.append(str(curr.val))
+            curr = curr.next
+        return "[" + ",".join(vals) + "]"
+
+
+class TreeNode:
+    """Standard LeetCode binary tree node."""
+    def __init__(self, val: int = 0, left: Optional["TreeNode"] = None, right: Optional["TreeNode"] = None):
+        self.val = val
+        self.left = left
+        self.right = right
+
+    def __repr__(self) -> str:
+        return f"TreeNode({self.val})"
+
+
+def list_to_linkedlist(arr: Optional[List[Any]]) -> Optional[ListNode]:
+    if not arr:
+        return None
+    dummy = ListNode(0)
+    curr = dummy
+    for x in arr:
+        curr.next = ListNode(x)
+        curr = curr.next
+    return dummy.next
+
+
+def linkedlist_to_list(head: Optional[ListNode]) -> List[Any]:
+    res = []
+    curr = head
+    visited = set()
+    while curr and id(curr) not in visited:
+        visited.add(id(curr))
+        res.append(curr.val)
+        curr = curr.next
+    return res
+
+
+def list_to_tree(arr: Optional[List[Any]]) -> Optional[TreeNode]:
+    if not arr:
+        return None
+    root = TreeNode(arr[0])
+    queue = [root]
+    i = 1
+    while queue and i < len(arr):
+        node = queue.pop(0)
+        if node is not None:
+            if i < len(arr) and arr[i] is not None:
+                node.left = TreeNode(arr[i])
+                queue.append(node.left)
+            i += 1
+            if i < len(arr) and arr[i] is not None:
+                node.right = TreeNode(arr[i])
+                queue.append(node.right)
+            i += 1
+    return root
+
+
+def tree_to_list(root: Optional[TreeNode]) -> List[Any]:
+    if not root:
+        return []
+    res = []
+    queue = [root]
+    while queue:
+        node = queue.pop(0)
+        if node:
+            res.append(node.val)
+            queue.append(node.left)
+            queue.append(node.right)
+        else:
+            res.append(None)
+    while res and res[-1] is None:
+        res.pop()
+    return res
 
 
 class PythonAdapter(BaseLanguageAdapter):
@@ -58,6 +146,88 @@ import sys
 import json
 import time
 import traceback
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
+
+# Common LeetCode data structure definitions
+class ListNode:
+    def __init__(self, val=0, next=None):
+        self.val = val
+        self.next = next
+
+    def __repr__(self):
+        vals = []
+        curr = self
+        visited = set()
+        while curr and id(curr) not in visited:
+            visited.add(id(curr))
+            vals.append(str(curr.val))
+            curr = curr.next
+        return "[" + ",".join(vals) + "]"
+
+class TreeNode:
+    def __init__(self, val=0, left=None, right=None):
+        self.val = val
+        self.left = left
+        self.right = right
+
+    def __repr__(self):
+        return f"TreeNode({{self.val}})"
+
+def list_to_linkedlist(arr):
+    if not arr:
+        return None
+    dummy = ListNode(0)
+    curr = dummy
+    for x in arr:
+        curr.next = ListNode(x)
+        curr = curr.next
+    return dummy.next
+
+def linkedlist_to_list(head):
+    res = []
+    curr = head
+    visited = set()
+    while curr and id(curr) not in visited:
+        visited.add(id(curr))
+        res.append(curr.val)
+        curr = curr.next
+    return res
+
+def list_to_tree(arr):
+    if not arr:
+        return None
+    root = TreeNode(arr[0])
+    queue = [root]
+    i = 1
+    while queue and i < len(arr):
+        node = queue.pop(0)
+        if node is not None:
+            if i < len(arr) and arr[i] is not None:
+                node.left = TreeNode(arr[i])
+                queue.append(node.left)
+            i += 1
+            if i < len(arr) and arr[i] is not None:
+                node.right = TreeNode(arr[i])
+                queue.append(node.right)
+            i += 1
+    return root
+
+def tree_to_list(root):
+    if not root:
+        return []
+    res = []
+    queue = [root]
+    while queue:
+        node = queue.pop(0)
+        if node:
+            res.append(node.val)
+            queue.append(node.left)
+            queue.append(node.right)
+        else:
+            res.append(None)
+    while res and res[-1] is None:
+        res.pop()
+    return res
 
 # --- User Solution Code Begin ---
 {solution_code}
@@ -69,6 +239,10 @@ FUNCTION_NAME = {json.dumps(problem.function_name)}
 def normalize(val):
     if isinstance(val, (set, frozenset)):
         return sorted(list(val))
+    if isinstance(val, ListNode):
+        return linkedlist_to_list(val)
+    if isinstance(val, TreeNode):
+        return tree_to_list(val)
     return val
 
 def run_tests():

@@ -88,6 +88,10 @@ def _drain_stream_incrementally(
             pass
 
 
+# Sentinel value for distinguishing omitted parameter from explicitly provided None
+_UNSET = object()
+
+
 class DockerSandbox(BaseSandbox):
     """
     Robust Docker / OCI container sandbox implementing BaseSandbox.
@@ -100,8 +104,8 @@ class DockerSandbox(BaseSandbox):
         image_name: str = DEFAULT_SANDBOX_IMAGE,
         docker_cmd: Optional[str] = None,
         scratch_base_dir: Optional[Path] = None,
-        expected_image_id: Optional[str] = None,
-        expected_digest: Optional[str] = None,
+        expected_image_id: Optional[str] = _UNSET,  # type: ignore[assignment]
+        expected_digest: Optional[str] = _UNSET,  # type: ignore[assignment]
         require_image_check: bool = True,
     ):
         """
@@ -141,17 +145,28 @@ class DockerSandbox(BaseSandbox):
         configured_scratch = scratch_base_dir or Path(os.environ.get("AGENT_SCRATCH_DIR", "storage/temp"))
         self._scratch_base_dir = configured_scratch.resolve()
 
-        # Support expected image identity verification
-        self._expected_image_id = (
-            expected_image_id.strip()
-            if expected_image_id
-            else os.environ.get("AGENT_SANDBOX_EXPECTED_IMAGE_ID", "").strip() or None
-        )
-        self._expected_digest = (
-            expected_digest.strip()
-            if expected_digest
-            else os.environ.get("AGENT_SANDBOX_EXPECTED_DIGEST", "").strip() or None
-        )
+        # Support expected image identity verification:
+        # If neither is explicitly provided, fall back to environment variables.
+        # If one is explicitly provided (or explicitly set to None), do not cross-pollute
+        # with the other from the environment unless also explicitly provided.
+        if expected_image_id is not _UNSET:
+            self._expected_image_id = expected_image_id.strip() if expected_image_id else None
+        elif expected_digest is not _UNSET:
+            # expected_digest was explicitly specified; don't pick up expected_image_id from env
+            self._expected_image_id = None
+        else:
+            env_id = os.environ.get("AGENT_SANDBOX_EXPECTED_IMAGE_ID", "").strip()
+            self._expected_image_id = env_id or None
+
+        if expected_digest is not _UNSET:
+            self._expected_digest = expected_digest.strip() if expected_digest else None
+        elif expected_image_id is not _UNSET:
+            # expected_image_id was explicitly specified; don't pick up expected_digest from env
+            self._expected_digest = None
+        else:
+            env_digest = os.environ.get("AGENT_SANDBOX_EXPECTED_DIGEST", "").strip()
+            self._expected_digest = env_digest or None
+
         if self._expected_digest:
             if not self._expected_digest.startswith("sha256:") or len(self._expected_digest) < 15:
                 raise ValueError(
@@ -179,22 +194,86 @@ class DockerSandbox(BaseSandbox):
     def expected_digest(self) -> Optional[str]:
         return self._expected_digest
 
+    def _setup_posix_permissions(self, path: Path, is_dir: bool, writable: bool) -> None:
+        """
+        Applies targeted least-privilege permissions on POSIX hosts for container UID:GID 1000:1000:
+        1. If the current host user is UID 1000 (e.g. standard user container match), restrictive
+           mode 0o700 (dirs) or 0o600 (files) is preserved, avoiding any group/other exposure.
+        2. Attempts to assign ownership or group to 1000:1000 via os.chown if permitted.
+        3. If running on a system with POSIX ACL tools (setfacl), grants targeted access exclusively
+           to UID 1000 without granting world/other permissions (e.g. setfacl -m u:1000:rwx).
+        4. If chown/ACLs are unavailable and host UID != 1000, ensures group or other bits are strictly
+           calibrated:
+           - Directory: 0o775 if group can be shared, or 0o777 on the specific isolated scratch workspace
+             if required, but logs a security warning and restricts default UMASK.
+           - Files: only 0o664 or 0o644; never sets setuid/setgid/executable on data files.
+        """
+        if os.name == "nt":
+            return
+
+        target_uid = 1000
+        target_gid = 1000
+
+        # Try chown if possible (e.g. root runner or member of group)
+        if hasattr(os, "chown"):
+            try:
+                os.chown(path, target_uid, target_gid, follow_symlinks=False)
+                # Chown succeeded; keep restrictive owner-only permissions!
+                target_mode = (0o700 if writable else 0o500) if is_dir else (0o600 if writable else 0o400)
+                os.chmod(path, target_mode, follow_symlinks=False)
+                return
+            except (OSError, PermissionError):
+                pass
+
+        # Try POSIX ACL (setfacl) for precise, least-privilege access without world exposure
+        setfacl_bin = shutil.which("setfacl")
+        if setfacl_bin:
+            acl_spec = f"u:{target_uid}:{'rwx' if writable else 'rx'}" if is_dir else f"u:{target_uid}:{'rw' if writable else 'r'}"
+            try:
+                res = subprocess.run(
+                    [setfacl_bin, "-m", acl_spec, str(path)],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=2.0,
+                )
+                if res.returncode == 0:
+                    # ACL applied successfully! Keep base mode restrictive (0o700/0o600)
+                    base_mode = 0o700 if is_dir else 0o600
+                    try:
+                        os.chmod(path, base_mode, follow_symlinks=False)
+                    except OSError:
+                        pass
+                    return
+            except Exception:
+                pass
+
+        # Check current host UID: if host runner is already UID 1000, keep 0o700/0o600
+        current_uid = getattr(os, "getuid", lambda: None)()
+        if current_uid == target_uid:
+            target_mode = (0o700 if writable else 0o500) if is_dir else (0o600 if writable else 0o400)
+            os.chmod(path, target_mode, follow_symlinks=False)
+            return
+
+        # If chown and setfacl are both unavailable and host UID != target_uid,
+        # fail closed rather than applying broad world-writable permissions (0o777 / 0o666).
+        raise PermissionError(
+            f"Cannot safely establish least-privilege permissions on {path} for container UID {target_uid}: "
+            f"host runner is UID {current_uid}, chown failed, and setfacl is unavailable. Failing closed."
+        )
+
     def create_private_workspace(self, prefix: str = "ws_") -> Path:
         """
         Creates a fresh, unique, private scratch workspace directory within the scratch base root.
-        Applies restrictive directory permissions (0o700 on POSIX).
+        Applies least-privilege permissions so that container user (UID:GID 1000:1000) can access
+        and write within its designated private scratch workspace.
         """
         self._scratch_base_dir.mkdir(parents=True, exist_ok=True)
         unique_name = f"{prefix}{uuid.uuid4().hex[:12]}"
         ws_dir = self._scratch_base_dir / unique_name
         ws_dir.mkdir(parents=True, exist_ok=False)
 
-        # Apply restrictive permissions on POSIX
-        if os.name != "nt":
-            try:
-                os.chmod(ws_dir, 0o700)
-            except OSError as e:
-                logger.warning(f"Could not set restrictive permissions on {ws_dir}: {e}")
+        # Apply targeted permissions on POSIX
+        self._setup_posix_permissions(ws_dir, is_dir=True, writable=True)
 
         return ws_dir.resolve()
 
@@ -202,11 +281,13 @@ class DockerSandbox(BaseSandbox):
         """
         Inspects the local Docker image and verifies that:
         1. An expected cryptographic identity (expected_image_id or expected_digest) is configured.
-           Fails closed if neither is configured.
-        2. The image exists locally without pulling.
-        3. If expected_image_id is specified, the inspected .Id matches exactly.
-        4. If expected_digest is specified, .RepoDigests contains the expected digest exactly.
+           Fails closed if neither is configured BEFORE any Docker CLI invocation.
+        2. The Docker CLI is present.
+        3. The image exists locally without pulling.
+        4. If expected_image_id is specified, the inspected .Id matches exactly.
+        5. If expected_digest is specified, .RepoDigests contains the expected digest exactly.
         """
+        # Verification order: absent expected immutable identity is checked first
         if not self._expected_image_id and not self._expected_digest:
             return False, (
                 f"DockerSandbox requires a configured expected_image_id or expected_digest for '{self._image_name}'. "
@@ -264,6 +345,8 @@ class DockerSandbox(BaseSandbox):
                     )
 
             return True, ""
+        except FileNotFoundError:
+            return False, f"Docker CLI executable not found: {self._docker_path}"
         except Exception as e:
             return False, f"Exception during image identity verification: {e}"
 
@@ -532,6 +615,15 @@ class DockerSandbox(BaseSandbox):
                 error_detail=f"Workspace re-check failed immediately before launch: {recheck_err}",
                 sandbox_backend=self.backend_name,
             )
+
+        # On POSIX hosts, calibrate permissions for non-root container UID:GID 1000:1000
+        # strictly within the validated workspace directory.
+        if os.name != "nt":
+            is_writable = eff_policy.workspace_read_write
+            self._setup_posix_permissions(workspace_dir, is_dir=True, writable=is_writable)
+            for item in workspace_dir.iterdir():
+                if not item.is_symlink():
+                    self._setup_posix_permissions(item, is_dir=item.is_dir(), writable=is_writable)
 
         docker_run_cmd = self._build_docker_run_command(
             container_name=container_name,

@@ -37,6 +37,11 @@ from agent.testing.engine import TestingEngine
 from agent.verification.verifier import SolutionVerifier
 
 
+from agent.config import Config
+from agent.llm.base import BaseLLMProvider
+from agent.llm.factory import get_llm_provider
+
+
 class AutonomousQueueRunner:
     """Orchestrates autonomous, continuous problem solving across a queue of DSA problems."""
 
@@ -48,10 +53,23 @@ class AutonomousQueueRunner:
         max_attempts_per_item: int = 3,
         allow_duplicates: bool = True,
         memory_service: Optional[Any] = None,
+        llm_provider: Optional[BaseLLMProvider] = None,
     ):
         self.store = store or SQLiteQueueStore()
         self.testing_engine = testing_engine or TestingEngine()
-        self.planner = AlgorithmPlanner()
+
+        # Initialize LLM provider if configured or passed
+        if llm_provider is not None:
+            self.llm = llm_provider
+        elif Config.is_api_key_configured():
+            try:
+                self.llm = get_llm_provider()
+            except Exception:
+                self.llm = None
+        else:
+            self.llm = None
+
+        self.planner = AlgorithmPlanner(llm_provider=self.llm)
         self.verifier = SolutionVerifier(testing_engine=self.testing_engine)
         self.memory_service = memory_service
         self.orchestrator = orchestrator or SelfCorrectionOrchestrator(
@@ -59,6 +77,7 @@ class AutonomousQueueRunner:
             testing_engine=self.testing_engine,
             memory_service=self.memory_service,
             max_attempts=max_attempts_per_item,
+            llm_provider=self.llm,
         )
         self.max_attempts_per_item = max_attempts_per_item
         self.allow_duplicates = allow_duplicates

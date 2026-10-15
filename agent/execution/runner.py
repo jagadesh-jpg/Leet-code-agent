@@ -28,13 +28,25 @@ from agent.execution.java_adapter import JavaAdapter
 from agent.execution.c_cpp_adapters import CppAdapter, CAdapter
 
 
+from agent.execution.sandbox.base import BaseSandbox
+from agent.execution.sandbox.docker import DockerSandbox
+from agent.execution.sandbox.models import ResourceLimits, SandboxPolicy
+
+
 class ExecutionRunner:
     """
     Language-agnostic execution orchestrator.
     Manages adapters, workspace creation, timeouts, process trees, and output extraction.
+    Delegates to a BaseSandbox backend (DockerSandbox by default) to isolate untrusted code.
     """
 
-    def __init__(self, timeout_seconds: float = 3.0, max_memory_mb: int = 256):
+    def __init__(
+        self,
+        timeout_seconds: float = 3.0,
+        max_memory_mb: int = 256,
+        sandbox: Optional[BaseSandbox] = None,
+        require_sandbox: Optional[bool] = None,
+    ):
         self.timeout_seconds = timeout_seconds
         self.max_memory_mb = max_memory_mb
         self._adapters: Dict[SupportedLanguage, BaseLanguageAdapter] = {
@@ -43,6 +55,22 @@ class ExecutionRunner:
             SupportedLanguage.C: CAdapter(),
             SupportedLanguage.JAVA: JavaAdapter(),
         }
+
+        # Sandbox backend configuration
+        # Default policy: untrusted generated code must be sandboxed.
+        # An explicitly trusted local development mode requires explicit REQUIRE_SANDBOX=0 or require_sandbox=False.
+        env_req_sandbox = os.environ.get("AGENT_REQUIRE_SANDBOX", os.environ.get("REQUIRE_DOCKER", "")).lower()
+        if require_sandbox is not None:
+            self.require_sandbox = require_sandbox
+        elif env_req_sandbox in ("1", "true", "yes"):
+            self.require_sandbox = True
+        elif env_req_sandbox in ("0", "false", "no"):
+            self.require_sandbox = False
+        else:
+            # Default to requiring sandbox if Docker is detected/configured, or if REQUIRE_DOCKER is set
+            self.require_sandbox = True
+
+        self.sandbox: Optional[BaseSandbox] = sandbox or (DockerSandbox() if self.require_sandbox else None)
 
     def register_adapter(self, adapter: BaseLanguageAdapter) -> None:
         """Allows registering or overriding a language adapter dynamically."""
@@ -66,7 +94,23 @@ class ExecutionRunner:
         timeout = override_timeout_sec or self.timeout_seconds
         adapter = self.get_adapter(language)
 
-        # 1. Check Toolchain Availability
+        # 1. Sandbox Verification
+        # If sandbox is required, ensure sandbox is configured and available. Never silently fall back to host!
+        if self.require_sandbox:
+            if not self.sandbox:
+                self.sandbox = DockerSandbox()
+            if not self.sandbox.is_available():
+                return ExecutionResult(
+                    status=ExecutionStatus.INFRASTRUCTURE_ERROR,
+                    failure_category=FailureCategory.ENVIRONMENT_ERROR,
+                    error_detail=(
+                        "Sandbox execution required for untrusted code, but verified Docker sandbox "
+                        f"backend '{self.sandbox.backend_name}' is unavailable on this host."
+                    ),
+                )
+            return self._run_in_sandbox(problem, solution_code, language, timeout)
+
+        # 2. Trusted Host Execution (explicitly opted in by caller / test environment)
         if not adapter.is_toolchain_available():
             return ExecutionResult(
                 status=ExecutionStatus.INFRASTRUCTURE_ERROR,
@@ -74,12 +118,10 @@ class ExecutionRunner:
                 error_detail=f"Compiler or interpreter toolchain for {language.value} is not installed or not in PATH.",
             )
 
-        # 2. Prepare Isolated Temporary Execution Directory
         with tempfile.TemporaryDirectory(prefix=f"exec_{language.value}_", ignore_cleanup_errors=True) as temp_dir_str:
             work_dir = Path(temp_dir_str)
             source_file = work_dir / f"harness{adapter.source_extension}"
 
-            # 3. Generate Test Harness
             try:
                 harness_code = adapter.generate_harness(
                     problem=problem,
@@ -94,18 +136,161 @@ class ExecutionRunner:
                     error_detail=f"Failed to generate test harness: {str(e)}",
                 )
 
-            # 4. Compile (if static compilation language)
             compile_result = adapter.compile(source_file, work_dir)
             if compile_result is not None:
-                # Compilation failed or returned infrastructure error
                 return compile_result
 
-            # 5. Build Subprocess Execution Command
             run_cmd = adapter.get_run_command(source_file, work_dir)
-
-            # 6. Execute Subprocess with Timeout and Tree-Kill Guard
             exec_res = self._execute_process(run_cmd, work_dir, timeout)
             return exec_res
+
+    def _run_in_sandbox(
+        self,
+        problem: ProblemSpec,
+        solution_code: str,
+        language: SupportedLanguage,
+        timeout_sec: float,
+    ) -> ExecutionResult:
+        """Executes compilation and test harness inside the verified sandbox backend."""
+        adapter = self.get_adapter(language)
+        assert self.sandbox is not None
+
+        # Create private scratch workspace
+        if hasattr(self.sandbox, "create_private_workspace"):
+            work_dir = self.sandbox.create_private_workspace(prefix=f"exec_{language.value}_")
+        else:
+            work_dir = Path(tempfile.mkdtemp(prefix=f"exec_{language.value}_"))
+
+        source_file = work_dir / f"harness{adapter.source_extension}"
+
+        try:
+            harness_code = adapter.generate_harness(
+                problem=problem,
+                solution_code=solution_code,
+                test_cases=problem.test_cases,
+            )
+            source_file.write_text(harness_code, encoding="utf-8")
+        except Exception as e:
+            return ExecutionResult(
+                status=ExecutionStatus.INFRASTRUCTURE_ERROR,
+                failure_category=FailureCategory.FORMAT_ERROR,
+                error_detail=f"Failed to generate test harness: {str(e)}",
+            )
+
+        policy = SandboxPolicy(
+            resources=ResourceLimits(
+                timeout_seconds=timeout_sec,
+                max_memory_mb=self.max_memory_mb,
+            ),
+            allow_network=False,
+            workspace_read_write=True,
+        )
+
+        # 1. Compilation inside container (if statically compiled)
+        if language in (SupportedLanguage.CPP, SupportedLanguage.C):
+            binary_name = "harness"
+            compile_cmd = (
+                ["g++", "-std=c++17", "-O2", f"harness{adapter.source_extension}", "-o", binary_name]
+                if language == SupportedLanguage.CPP
+                else ["gcc", "-O2", f"harness{adapter.source_extension}", "-o", binary_name]
+            )
+            compile_res = self.sandbox.execute(compile_cmd, work_dir, policy)
+            if compile_res.status != ExecutionStatus.SUCCESS:
+                return ExecutionResult(
+                    status=ExecutionStatus.COMPILE_ERROR,
+                    failure_category=FailureCategory.COMPILE_ERROR,
+                    exit_code=compile_res.exit_code,
+                    stdout=compile_res.stdout,
+                    stderr=compile_res.stderr,
+                    compile_output=compile_res.stderr.strip() or compile_res.stdout.strip(),
+                    execution_time_ms=compile_res.execution_time_ms,
+                    error_detail=f"Compilation failed in sandbox:\n{compile_res.stderr.strip()}",
+                )
+            run_cmd = [f"./{binary_name}"]
+        elif language == SupportedLanguage.JAVA:
+            compile_cmd = ["javac", "SolutionHarness.java" if (work_dir / "SolutionHarness.java").exists() else f"harness{adapter.source_extension}"]
+            compile_res = self.sandbox.execute(compile_cmd, work_dir, policy)
+            if compile_res.status != ExecutionStatus.SUCCESS:
+                return ExecutionResult(
+                    status=ExecutionStatus.COMPILE_ERROR,
+                    failure_category=FailureCategory.COMPILE_ERROR,
+                    exit_code=compile_res.exit_code,
+                    stdout=compile_res.stdout,
+                    stderr=compile_res.stderr,
+                    compile_output=compile_res.stderr.strip() or compile_res.stdout.strip(),
+                    execution_time_ms=compile_res.execution_time_ms,
+                    error_detail=f"Java compilation failed in sandbox:\n{compile_res.stderr.strip()}",
+                )
+            run_cmd = ["java", "-Xmx256m", "SolutionHarness" if (work_dir / "SolutionHarness.java").exists() else "harness"]
+        elif language == SupportedLanguage.PYTHON:
+            run_cmd = ["python3", "-I", f"harness{adapter.source_extension}"]
+        else:
+            return ExecutionResult(
+                status=ExecutionStatus.INFRASTRUCTURE_ERROR,
+                failure_category=FailureCategory.ENVIRONMENT_ERROR,
+                error_detail=f"Unsupported language in sandbox: {language.value}",
+            )
+
+        # 2. Execution inside container
+        sand_res = self.sandbox.execute(run_cmd, work_dir, policy)
+
+        # Map sandbox result to ExecutionResult
+        if sand_res.status == ExecutionStatus.TIMEOUT:
+            return ExecutionResult(
+                status=ExecutionStatus.TIMEOUT,
+                failure_category=FailureCategory.TIME_LIMIT_EXCEEDED,
+                exit_code=-1,
+                stdout=sand_res.stdout,
+                stderr=sand_res.stderr,
+                execution_time_ms=sand_res.execution_time_ms,
+                error_detail=f"Execution timed out in sandbox after {timeout_sec}s.",
+            )
+        elif sand_res.status == ExecutionStatus.INFRASTRUCTURE_ERROR:
+            return ExecutionResult(
+                status=ExecutionStatus.INFRASTRUCTURE_ERROR,
+                failure_category=sand_res.failure_category,
+                exit_code=sand_res.exit_code,
+                stdout=sand_res.stdout,
+                stderr=sand_res.stderr,
+                execution_time_ms=sand_res.execution_time_ms,
+                error_detail=sand_res.error_detail or "Sandbox infrastructure error.",
+            )
+
+        # Parse test results from stdout
+        test_results, all_passed = self._parse_harness_output(sand_res.stdout)
+        if test_results is not None:
+            return ExecutionResult(
+                status=ExecutionStatus.SUCCESS if all_passed else ExecutionStatus.WRONG_ANSWER,
+                failure_category=None if all_passed else FailureCategory.WRONG_ANSWER,
+                exit_code=sand_res.exit_code,
+                stdout=sand_res.stdout,
+                stderr=sand_res.stderr,
+                execution_time_ms=sand_res.execution_time_ms,
+                test_results=test_results,
+            )
+
+        # Runtime Error
+        if sand_res.exit_code != 0:
+            cat = FailureCategory.MEMORY_LIMIT_EXCEEDED if sand_res.exit_code == 137 else FailureCategory.RUNTIME_ERROR
+            return ExecutionResult(
+                status=ExecutionStatus.RUNTIME_ERROR,
+                failure_category=cat,
+                exit_code=sand_res.exit_code,
+                stdout=sand_res.stdout,
+                stderr=sand_res.stderr,
+                execution_time_ms=sand_res.execution_time_ms,
+                error_detail=sand_res.stderr.strip() or sand_res.stdout.strip() or f"Process exited with code {sand_res.exit_code}",
+            )
+
+        return ExecutionResult(
+            status=ExecutionStatus.RUNTIME_ERROR,
+            failure_category=FailureCategory.EMPTY_OUTPUT,
+            exit_code=sand_res.exit_code,
+            stdout=sand_res.stdout,
+            stderr=sand_res.stderr,
+            execution_time_ms=sand_res.execution_time_ms,
+            error_detail="Sandbox process completed but test harness output markers were missing.",
+        )
 
     def _execute_process(
         self,

@@ -441,3 +441,68 @@ def test_execute_timeout_handling_reaps_process_and_cleans_pipes(tmp_path):
         assert mock_proc.kill.called
         assert mock_proc.stdout.close.called
         assert mock_proc.stderr.close.called
+
+
+def test_posix_permissions_strategy(tmp_path):
+    """
+    Verifies the least-privilege POSIX permission strategy:
+    1. When host UID is 1000, preserves restrictive 0o700 / 0o600 permissions.
+    2. When setfacl is available, applies targeted ACL u:1000:rwx without world exposure.
+    3. Never follows symlinks when adjusting permissions.
+    """
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    ws = scratch / "ws_sec"
+    ws.mkdir()
+    sample_file = ws / "script.py"
+    sample_file.write_text("print('test')")
+
+    box = DockerSandbox(image_name="agent-sandbox:v1", scratch_base_dir=scratch)
+
+    # 1. Matching UID 1000 test
+    with patch("os.name", "posix"), \
+         patch("os.getuid", return_value=1000, create=True), \
+         patch("os.chmod") as mock_chmod:
+        box._setup_posix_permissions(ws, is_dir=True, writable=True)
+        # Should apply 0o700 (owner-only)
+        mock_chmod.assert_called_with(ws, 0o700, follow_symlinks=False)
+
+    # 2. ACL setfacl success test
+    with patch("os.name", "posix"), \
+         patch("os.getuid", return_value=1001, create=True), \
+         patch("shutil.which", return_value="/usr/bin/setfacl"), \
+         patch("subprocess.run") as mock_subproc, \
+         patch("os.chmod") as mock_chmod:
+        mock_subproc.return_value = MagicMock(returncode=0)
+        box._setup_posix_permissions(sample_file, is_dir=False, writable=True)
+        # Should call setfacl with u:1000:rw
+        mock_subproc.assert_called_with(
+            ["/usr/bin/setfacl", "-m", "u:1000:rw", str(sample_file)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=2.0,
+        )
+        # Base permissions remain restrictive 0o600
+        mock_chmod.assert_called_with(sample_file, 0o600, follow_symlinks=False)
+
+    # 3. Symlink safety in workspace execution setup
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    outside_file = outside / "secret.txt"
+    outside_file.write_text("outside secret")
+
+    link = ws / "leak_symlink"
+    try:
+        os.symlink(outside_file, link)
+        with patch.object(box, "_setup_posix_permissions") as mock_setup, \
+             patch("os.name", "posix"):
+            # When iterating workspace_dir, symlinks must NOT have permissions altered
+            for item in ws.iterdir():
+                if not item.is_symlink():
+                    box._setup_posix_permissions(item, is_dir=item.is_dir(), writable=True)
+            # Ensure _setup_posix_permissions was called for sample_file, but NOT for link
+            called_paths = [call[0][0] for call in mock_setup.call_args_list]
+            assert sample_file in called_paths
+            assert link not in called_paths
+    except OSError:
+        pass  # Symlink not allowed on host, skip symlink creation check

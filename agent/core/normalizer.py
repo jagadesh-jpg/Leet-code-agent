@@ -134,7 +134,9 @@ class ProblemNormalizer:
 
     def _from_text(self, text: str, override_id: Optional[str]) -> ProblemSpec:
         """Parses standard markdown/plain text LeetCode problem descriptions."""
-        lines = [line.rstrip() for line in text.splitlines()]
+        # Normalize escaped literal newlines if present (e.g. from CLI text arguments)
+        normalized_text = text.replace("\\r\\n", "\n").replace("\\n", "\n")
+        lines = [line.rstrip() for line in normalized_text.splitlines()]
 
         # 1. Title & Difficulty
         title, difficulty = self._extract_title_and_difficulty(lines)
@@ -212,6 +214,14 @@ class ProblemNormalizer:
                 continue
             # Remove leading markdown heading #
             candidate = re.sub(r"^#+\s*", "", stripped).strip()
+
+            # If the candidate line is long and contains a sentence ending period without heading,
+            # take only the first title-like phrase
+            if not stripped.startswith("#") and "." in candidate:
+                first_part = candidate.split(".", 1)[0].strip()
+                if len(first_part) <= 60 and len(first_part.split()) <= 6:
+                    candidate = first_part
+
             # Check for difficulty tags e.g. "Two Sum [Easy]" or "Two Sum (Easy)"
             diff_match = re.search(r"[\(\[\s](Easy|Medium|Hard)[\)\]\s]?$", candidate, re.IGNORECASE)
             if diff_match:

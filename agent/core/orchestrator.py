@@ -7,7 +7,7 @@ Bounded by MAX_ATTEMPTS with deterministic state transitions.
 
 import hashlib
 import uuid
-from typing import Any, Optional
+from typing import Any, List, Optional, Set
 from agent.llm.base import BaseLLMProvider
 from agent.core.models import (
     AgentState,
@@ -15,10 +15,13 @@ from agent.core.models import (
     FailureCategory,
     FailureReport,
     FailureSeverity,
+    OracleType,
     ProblemSpec,
     RepairAttempt,
     SelfCorrectionSession,
     SupportedLanguage,
+    TestCase,
+    TestCategory,
     VerificationStatus,
 )
 from agent.debugging.failure_analyzer import FailureAnalyzer
@@ -156,6 +159,8 @@ class SelfCorrectionOrchestrator:
             pass  # Will enter the repair loop to correct the syntax/policy violation
 
         attempt_count = 0
+        failing_regression_tests: List[TestCase] = []
+        failing_tc_ids: Set[str] = set()
 
         # --- BOUNDED SELF-CORRECTION LOOP ---
         while attempt_count < effective_max:
@@ -203,14 +208,64 @@ class SelfCorrectionOrchestrator:
                 current_code = repaired_code
                 continue
 
-            # 5. State: EXECUTING_TESTS (Run Full Adaptive Regression Suite)
-            session.final_state = AgentState.EXECUTING_TESTS
-            test_report = self.testing_engine.evaluate_solution_adaptive(
-                problem=problem,
-                solution_code=current_code,
-                language=language,
-                retrieved_memories=retrieved_experiences,
-            )
+            # 5. State: EXECUTING_TESTS / RETESTING
+            session.final_state = AgentState.RETESTING if attempt_count > 1 else AgentState.EXECUTING_TESTS
+
+            # Task 5: Avoid repeating expensive adaptive/stress suite on every intermediate attempt.
+            # On attempt > 1, first test against examples + accumulated failing regression cases.
+            if attempt_count > 1 and failing_regression_tests:
+                # Combine original examples with accumulated failing test cases (deduplicating by ID)
+                seen_ids = set()
+                intermediate_suite: List[TestCase] = []
+                # Keep examples
+                for tc in problem.test_cases:
+                    if tc.id not in seen_ids:
+                        seen_ids.add(tc.id)
+                        intermediate_suite.append(tc)
+                # Keep previously failing regression cases
+                for tc in failing_regression_tests:
+                    if tc.id not in seen_ids:
+                        seen_ids.add(tc.id)
+                        intermediate_suite.append(tc)
+
+                intermediate_spec = problem.model_copy(update={"test_cases": intermediate_suite})
+                test_report = self.testing_engine.evaluate_solution(
+                    problem=intermediate_spec,
+                    solution_code=current_code,
+                    language=language,
+                    expand_suite=False,
+                    include_stress=False,
+                )
+
+                # If candidate code passes the intermediate regression suite, run full adaptive verification
+                if test_report.all_passed:
+                    test_report = self.testing_engine.evaluate_solution_adaptive(
+                        problem=problem,
+                        solution_code=current_code,
+                        language=language,
+                        retrieved_memories=retrieved_experiences,
+                    )
+            else:
+                test_report = self.testing_engine.evaluate_solution_adaptive(
+                    problem=problem,
+                    solution_code=current_code,
+                    language=language,
+                    retrieved_memories=retrieved_experiences,
+                )
+
+            # Accumulate any newly failing test cases for future regression iterations
+            if test_report.failed_test_results:
+                for failed_res in test_report.failed_test_results:
+                    tc_id = failed_res.test_case_id
+                    if tc_id not in failing_tc_ids:
+                        failing_tc_ids.add(tc_id)
+                        failing_regression_tests.append(TestCase(
+                            id=tc_id,
+                            inputs=failed_res.input_data,
+                            expected_output=failed_res.expected_output,
+                            category=failed_res.category or TestCategory.BASIC,
+                            oracle_type=failed_res.oracle_type or OracleType.PROBLEM_SPEC,
+                        ))
 
             # 6. Check for INFRASTRUCTURE / TOOLCHAIN FAILURE
             if test_report.execution_status == test_report.execution_status.INFRASTRUCTURE_ERROR:

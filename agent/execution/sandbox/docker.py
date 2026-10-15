@@ -197,16 +197,13 @@ class DockerSandbox(BaseSandbox):
     def _setup_posix_permissions(self, path: Path, is_dir: bool, writable: bool) -> None:
         """
         Applies targeted least-privilege permissions on POSIX hosts for container UID:GID 1000:1000:
-        1. If the current host user is UID 1000 (e.g. standard user container match), restrictive
-           mode 0o700 (dirs) or 0o600 (files) is preserved, avoiding any group/other exposure.
-        2. Attempts to assign ownership or group to 1000:1000 via os.chown if permitted.
-        3. If running on a system with POSIX ACL tools (setfacl), grants targeted access exclusively
-           to UID 1000 without granting world/other permissions (e.g. setfacl -m u:1000:rwx).
-        4. If chown/ACLs are unavailable and host UID != 1000, ensures group or other bits are strictly
-           calibrated:
-           - Directory: 0o775 if group can be shared, or 0o777 on the specific isolated scratch workspace
-             if required, but logs a security warning and restricts default UMASK.
-           - Files: only 0o664 or 0o644; never sets setuid/setgid/executable on data files.
+        1. Attempts to assign ownership or group to 1000:1000 via os.chown if permitted.
+        2. If running on a system with POSIX ACL tools (setfacl), grants targeted access exclusively
+           to UID 1000 and explicitly includes the ACL mask and directory default ACLs (without
+           calling chmod, which would recalculate and zero out the ACL mask).
+        3. If the current host user is UID 1000, restrictive mode 0o700 (dirs) or 0o600 (files) is applied.
+        4. If chown and setfacl are unavailable and host UID != 1000, fails closed to prevent
+           broad world-writable exposure.
         """
         if os.name == "nt":
             return
@@ -228,7 +225,16 @@ class DockerSandbox(BaseSandbox):
         # Try POSIX ACL (setfacl) for precise, least-privilege access without world exposure
         setfacl_bin = shutil.which("setfacl")
         if setfacl_bin:
-            acl_spec = f"u:{target_uid}:{'rwx' if writable else 'rx'}" if is_dir else f"u:{target_uid}:{'rw' if writable else 'r'}"
+            # Under POSIX ACL semantics, do NOT call chmod(path, 0o700/0o600) after setfacl,
+            # because chmod recalculates the ACL mask (mask::---) from the group bits,
+            # which masks out the named user (u:1000) and results in [Errno 13] Permission denied.
+            # Instead, explicitly include the mask (m::rwx or m::rw/r) and for directories,
+            # also configure default ACLs (d:u:1000:..., d:m:...) so inherited access works.
+            mode_str = "rwx" if (is_dir and writable) else ("rx" if is_dir else ("rw" if writable else "r"))
+            if is_dir:
+                acl_spec = f"u:{target_uid}:{mode_str},m::{mode_str},d:u:{target_uid}:{mode_str},d:m::{mode_str}"
+            else:
+                acl_spec = f"u:{target_uid}:{mode_str},m::{mode_str}"
             try:
                 res = subprocess.run(
                     [setfacl_bin, "-m", acl_spec, str(path)],
@@ -237,12 +243,6 @@ class DockerSandbox(BaseSandbox):
                     timeout=2.0,
                 )
                 if res.returncode == 0:
-                    # ACL applied successfully! Keep base mode restrictive (0o700/0o600)
-                    base_mode = 0o700 if is_dir else 0o600
-                    try:
-                        os.chmod(path, base_mode, follow_symlinks=False)
-                    except OSError:
-                        pass
                     return
             except Exception:
                 pass

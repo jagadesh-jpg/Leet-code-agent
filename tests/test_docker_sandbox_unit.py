@@ -475,15 +475,26 @@ def test_posix_permissions_strategy(tmp_path):
          patch("os.chmod") as mock_chmod:
         mock_subproc.return_value = MagicMock(returncode=0)
         box._setup_posix_permissions(sample_file, is_dir=False, writable=True)
-        # Should call setfacl with u:1000:rw
+        # Should call setfacl with u:1000:rw and mask m::rw
         mock_subproc.assert_called_with(
-            ["/usr/bin/setfacl", "-m", "u:1000:rw", str(sample_file)],
+            ["/usr/bin/setfacl", "-m", "u:1000:rw,m::rw", str(sample_file)],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             timeout=2.0,
         )
-        # Base permissions remain restrictive 0o600
-        mock_chmod.assert_called_with(sample_file, 0o600, follow_symlinks=False)
+        # Chmod must NOT be called after setfacl to avoid zeroing out the ACL mask
+        mock_chmod.assert_not_called()
+
+        # For directories, should include default ACLs
+        mock_subproc.reset_mock()
+        box._setup_posix_permissions(ws, is_dir=True, writable=True)
+        mock_subproc.assert_called_with(
+            ["/usr/bin/setfacl", "-m", "u:1000:rwx,m::rwx,d:u:1000:rwx,d:m::rwx", str(ws)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=2.0,
+        )
+        mock_chmod.assert_not_called()
 
     # 3. Symlink safety in workspace execution setup
     outside = tmp_path / "outside"
@@ -506,3 +517,33 @@ def test_posix_permissions_strategy(tmp_path):
             assert link not in called_paths
     except OSError:
         pass  # Symlink not allowed on host, skip symlink creation check
+
+
+def test_posix_permissions_fails_closed_when_tools_unavailable(tmp_path):
+    """
+    Verifies that _setup_posix_permissions fails closed with PermissionError
+    if chown fails, setfacl fails/unavailable, and host UID != 1000,
+    rather than falling back to broad permissions (chmod 777).
+    """
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    ws = scratch / "ws_fail_closed"
+    ws.mkdir()
+    box = DockerSandbox(image_name="agent-sandbox:v1", scratch_base_dir=scratch)
+
+    # 1. setfacl exits with error returncode
+    with patch("os.name", "posix"), \
+         patch("os.getuid", return_value=1001, create=True), \
+         patch("shutil.which", return_value="/usr/bin/setfacl"), \
+         patch("subprocess.run", return_value=MagicMock(returncode=1)):
+        with pytest.raises(PermissionError) as exc_info:
+            box._setup_posix_permissions(ws, is_dir=True, writable=True)
+        assert "Cannot safely establish least-privilege permissions" in str(exc_info.value)
+
+    # 2. setfacl binary not found
+    with patch("os.name", "posix"), \
+         patch("os.getuid", return_value=1001, create=True), \
+         patch("shutil.which", return_value=None):
+        with pytest.raises(PermissionError) as exc_info:
+            box._setup_posix_permissions(ws, is_dir=True, writable=True)
+        assert "Cannot safely establish least-privilege permissions" in str(exc_info.value)

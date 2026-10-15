@@ -487,7 +487,7 @@ class RootCauseLocalizer:
 
         # B. Two Pointers / Palindrome
         elif primary_pattern == DSAPattern.TWO_POINTERS or "palindrome" in prob_id or "ispalindrome" in func_name:
-            if "tolower" not in source.lower() and "case" not in source.lower() and "s" in problem.param_names:
+            if "tolower" not in source.lower() and "s" in problem.param_names:
                 hypotheses.append(DiagnosticHypothesis(
                     hypothesis_id="hyp_tp_case",
                     title="Two Pointers Case Sensitivity / Alphanumeric Normalization",

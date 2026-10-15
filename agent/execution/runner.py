@@ -196,6 +196,16 @@ class ExecutionRunner:
             )
             compile_res = self.sandbox.execute(compile_cmd, work_dir, policy)
             if compile_res.status != ExecutionStatus.SUCCESS:
+                if compile_res.status in (ExecutionStatus.INFRASTRUCTURE_ERROR, ExecutionStatus.TIMEOUT):
+                    return ExecutionResult(
+                        status=compile_res.status,
+                        failure_category=compile_res.failure_category,
+                        exit_code=compile_res.exit_code,
+                        stdout=compile_res.stdout,
+                        stderr=compile_res.stderr,
+                        execution_time_ms=compile_res.execution_time_ms,
+                        error_detail=compile_res.error_detail or compile_res.stderr.strip(),
+                    )
                 return ExecutionResult(
                     status=ExecutionStatus.COMPILE_ERROR,
                     failure_category=FailureCategory.COMPILE_ERROR,
@@ -211,6 +221,16 @@ class ExecutionRunner:
             compile_cmd = ["javac", "SolutionHarness.java" if (work_dir / "SolutionHarness.java").exists() else f"harness{adapter.source_extension}"]
             compile_res = self.sandbox.execute(compile_cmd, work_dir, policy)
             if compile_res.status != ExecutionStatus.SUCCESS:
+                if compile_res.status in (ExecutionStatus.INFRASTRUCTURE_ERROR, ExecutionStatus.TIMEOUT):
+                    return ExecutionResult(
+                        status=compile_res.status,
+                        failure_category=compile_res.failure_category,
+                        exit_code=compile_res.exit_code,
+                        stdout=compile_res.stdout,
+                        stderr=compile_res.stderr,
+                        execution_time_ms=compile_res.execution_time_ms,
+                        error_detail=compile_res.error_detail or compile_res.stderr.strip(),
+                    )
                 return ExecutionResult(
                     status=ExecutionStatus.COMPILE_ERROR,
                     failure_category=FailureCategory.COMPILE_ERROR,

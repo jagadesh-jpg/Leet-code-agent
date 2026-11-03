@@ -86,3 +86,49 @@ def extract_code(response_text: str) -> str:
 
     # 3. Otherwise return empty string
     return ""
+
+
+def format_copy_ready_solution(code: str, function_name: str) -> str:
+    """Ensure candidate code is properly formatted for LeetCode's class-based editor.
+    If 'class Solution' is already present, return code as is.
+    Otherwise, wrap the standalone function into class Solution."""
+    if not code:
+        return ""
+    if re.search(r"\bclass\s+Solution\b", code):
+        return code.strip()
+
+    # Wrap standalone function
+    lines = code.strip().splitlines()
+    wrapped_lines = ["class Solution:"]
+    for line in lines:
+        if line.strip():
+            # If line is function definition, add 'self' parameter if not present
+            if re.match(r"\s*def\s+" + re.escape(function_name) + r"\s*\(", line):
+                def_prefix = re.match(r"(\s*def\s+" + re.escape(function_name) + r"\s*\()", line).group(1)
+                rest = line[len(def_prefix):]
+                if not rest.startswith("self"):
+                    if rest.startswith(")"):
+                        line = def_prefix + "self" + rest
+                    else:
+                        line = def_prefix + "self, " + rest
+            wrapped_lines.append("    " + line)
+        else:
+            wrapped_lines.append("")
+    return "\n".join(wrapped_lines)
+
+
+def build_complexity_prompt(problem: Dict[str, Any], code: str) -> str:
+    return f"""Problem: {problem.get('title', problem.get('id', ''))}
+Code:
+```python
+{code}
+```
+
+Please analyze the Big-O time and space complexity of this Python solution.
+Reply in JSON format with exactly two keys:
+{{
+  "time_complexity": "O(...)",
+  "space_complexity": "O(...)",
+  "explanation": "concise explanation"
+}}"""
+

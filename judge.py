@@ -41,13 +41,26 @@ def main():
 
     fn_name = problem["function_name"]
     fn = globals().get(fn_name)
+
+    # Support LeetCode 'class Solution' if standalone function is not in globals
+    if fn is None or not callable(fn):
+        sol_cls = globals().get("Solution")
+        if sol_cls is not None and isinstance(sol_cls, type):
+            try:
+                inst = sol_cls()
+                method = getattr(inst, fn_name, None)
+                if method is not None and callable(method):
+                    fn = method
+            except Exception:
+                pass
+
     if fn is None or not callable(fn):
         res = {
             "status": "runtime_error",
             "passed_count": 0,
             "total": len(problem["tests"]),
             "failure": None,
-            "error": f"Function '{fn_name}' was not found or is not callable."
+            "error": f"Function '{fn_name}' was not found as a function or as a method on class Solution."
         }
         print("###RESULT_START###")
         print(json.dumps(res))

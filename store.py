@@ -39,6 +39,34 @@ def init(db_path: Optional[str | Path] = None) -> None:
             )
             """
         )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS custom_problems (
+                id TEXT PRIMARY KEY,
+                url TEXT,
+                title TEXT,
+                difficulty TEXT,
+                description TEXT,
+                function_name TEXT,
+                signature TEXT,
+                tests_json TEXT,
+                created_at TEXT
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS official_verdicts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                problem_id TEXT,
+                verdict TEXT,
+                runtime_ms REAL,
+                memory_mb REAL,
+                notes TEXT,
+                submitted_at TEXT
+            )
+            """
+        )
         conn.commit()
 
 
@@ -147,9 +175,160 @@ def get_attempt_count(problem_id: str, db_path: Optional[str | Path] = None) -> 
         return row["count"] if row else 0
 
 
+def save_custom_problem(
+    problem_id: str,
+    url: str,
+    title: str,
+    difficulty: str,
+    description: str,
+    function_name: str,
+    signature: str,
+    tests: List[Dict[str, Any]],
+    db_path: Optional[str | Path] = None,
+) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    import json
+    tests_json = json.dumps(tests)
+    with get_connection(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO custom_problems (id, url, title, difficulty, description, function_name, signature, tests_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                url = excluded.url,
+                title = excluded.title,
+                difficulty = excluded.difficulty,
+                description = excluded.description,
+                function_name = excluded.function_name,
+                signature = excluded.signature,
+                tests_json = excluded.tests_json,
+                created_at = excluded.created_at
+            """,
+            (problem_id, url, title, difficulty, description, function_name, signature, tests_json, now),
+        )
+        conn.commit()
+
+
+def get_custom_problem(problem_id: str, db_path: Optional[str | Path] = None) -> Optional[Dict[str, Any]]:
+    import json
+    with get_connection(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM custom_problems WHERE id = ?", (problem_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "id": row["id"],
+            "url": row["url"],
+            "title": row["title"],
+            "difficulty": row["difficulty"],
+            "description": row["description"],
+            "function_name": row["function_name"],
+            "signature": row["signature"],
+            "tests": json.loads(row["tests_json"]),
+            "created_at": row["created_at"],
+            "compare": "exact",
+        }
+
+
+def list_custom_problems(db_path: Optional[str | Path] = None) -> List[Dict[str, Any]]:
+    import json
+    with get_connection(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM custom_problems ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        result = []
+        for row in rows:
+            result.append({
+                "id": row["id"],
+                "url": row["url"],
+                "title": row["title"],
+                "difficulty": row["difficulty"],
+                "description": row["description"],
+                "function_name": row["function_name"],
+                "signature": row["signature"],
+                "tests": json.loads(row["tests_json"]),
+                "created_at": row["created_at"],
+            })
+        return result
+
+
+VALID_OFFICIAL_VERDICTS = [
+    "Accepted",
+    "Wrong Answer",
+    "Time Limit Exceeded",
+    "Memory Limit Exceeded",
+    "Runtime Error",
+    "Compile Error",
+    "Pending",
+]
+
+
+def record_official_verdict(
+    problem_id: str,
+    verdict: str,
+    runtime_ms: Optional[float] = None,
+    memory_mb: Optional[float] = None,
+    notes: Optional[str] = None,
+    db_path: Optional[str | Path] = None,
+) -> Dict[str, Any]:
+    norm_verdict = verdict.strip().title()
+    if norm_verdict not in VALID_OFFICIAL_VERDICTS:
+        norm_verdict = f"Other ({verdict.strip()})"
+
+    now = datetime.now(timezone.utc).isoformat()
+    with get_connection(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO official_verdicts (problem_id, verdict, runtime_ms, memory_mb, notes, submitted_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (problem_id, norm_verdict, runtime_ms, memory_mb, notes or "", now),
+        )
+        conn.commit()
+
+    return {
+        "problem_id": problem_id,
+        "verdict": norm_verdict,
+        "runtime_ms": runtime_ms,
+        "memory_mb": memory_mb,
+        "notes": notes or "",
+        "submitted_at": now,
+    }
+
+
+def get_official_verdicts(problem_id: Optional[str] = None, db_path: Optional[str | Path] = None) -> List[Dict[str, Any]]:
+    with get_connection(db_path) as conn:
+        cursor = conn.cursor()
+        if problem_id:
+            cursor.execute(
+                "SELECT * FROM official_verdicts WHERE problem_id = ? ORDER BY id DESC",
+                (problem_id,),
+            )
+        else:
+            cursor.execute("SELECT * FROM official_verdicts ORDER BY id DESC")
+        rows = cursor.fetchall()
+        return [
+            {
+                "id": r["id"],
+                "problem_id": r["problem_id"],
+                "verdict": r["verdict"],
+                "runtime_ms": r["runtime_ms"],
+                "memory_mb": r["memory_mb"],
+                "notes": r["notes"],
+                "submitted_at": r["submitted_at"],
+            }
+            for r in rows
+        ]
+
+
 def reset(db_path: Optional[str | Path] = None) -> None:
     with get_connection(db_path) as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM attempts")
         cursor.execute("DELETE FROM progress")
+        cursor.execute("DELETE FROM custom_problems")
+        cursor.execute("DELETE FROM official_verdicts")
         conn.commit()

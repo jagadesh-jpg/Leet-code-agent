@@ -1,9 +1,12 @@
 import os
+import re
 import sys
 from typing import Any, Dict, List, Optional
 from mcp.server.fastmcp import FastMCP
 
+from assistant import solve_problem_flow, validate_problem_url
 from judge import run_solution
+from llm import LLMClient, LLMError, MockLLM
 from problems import get_problems, load_problems
 import store
 
@@ -138,11 +141,152 @@ def submit_solution(problem_id: str, code: str) -> dict:
 
 @mcp.tool()
 def get_progress() -> dict:
-    """Return the current saved LeetCode solving progress."""
+    """Return the current saved LeetCode solving progress including custom problems and official verdicts."""
     db_path = _get_active_db_path()
     store.init(db_path=db_path)
     all_problems = load_problems()
-    return store.summary(db_path=db_path, problems=all_problems)
+    summary = store.summary(db_path=db_path, problems=all_problems)
+
+    # Add custom problems & official verdicts stats
+    custom_list = store.list_custom_problems(db_path=db_path)
+    verdicts = store.get_official_verdicts(db_path=db_path)
+
+    verdict_counts: Dict[str, int] = {}
+    for v in verdicts:
+        v_name = v.get("verdict", "Unknown")
+        verdict_counts[v_name] = verdict_counts.get(v_name, 0) + 1
+
+    summary["custom_problems"] = {
+        "total_imported": len(custom_list),
+        "problems": [
+            {
+                "id": p["id"],
+                "title": p["title"],
+                "difficulty": p["difficulty"],
+                "url": p["url"],
+                "locally_solved": store.is_solved(p["id"], db_path=db_path),
+            }
+            for p in custom_list
+        ],
+    }
+    summary["official_verdicts"] = {
+        "total_recorded": len(verdicts),
+        "breakdown": verdict_counts,
+        "recent": verdicts[:5],
+    }
+    return summary
+
+
+@mcp.tool()
+def import_problem(
+    url: str,
+    title: str,
+    difficulty: str,
+    description: str,
+    function_name: str,
+    signature: str,
+    example_tests: list[dict],
+) -> dict:
+    """Import a user-provided LeetCode problem manually without scraping or automated requests."""
+    db_path = _get_active_db_path()
+    store.init(db_path=db_path)
+
+    # 1. Validate URL
+    if not validate_problem_url(url):
+        return {"error": "Invalid LeetCode problem URL. Must belong to leetcode.com or leetcode.cn."}
+
+    # 2. Derive problem_id from URL slug or title
+    slug = [seg for seg in url.strip().rstrip("/").split("/") if seg and seg != "description"]
+    problem_id = slug[-1].lower() if slug else re.sub(r"[^a-zA-Z0-9_\-]+", "-", title.strip().lower())
+    if not problem_id:
+        problem_id = re.sub(r"[^a-zA-Z0-9_\-]+", "-", title.strip().lower())
+
+    # 3. Validate metadata
+    if not title or not description or not function_name or not signature:
+        return {"error": "Missing required problem fields (title, description, function_name, or signature)."}
+
+    diff_norm = difficulty.strip().lower()
+    if diff_norm not in ["easy", "medium", "hard"]:
+        diff_norm = "medium"
+
+    # 4. Save custom problem
+    store.save_custom_problem(
+        problem_id=problem_id,
+        url=url.strip(),
+        title=title.strip(),
+        difficulty=diff_norm,
+        description=description.strip(),
+        function_name=function_name.strip(),
+        signature=signature.strip(),
+        tests=example_tests,
+        db_path=db_path,
+    )
+
+    return {
+        "status": "imported",
+        "problem_id": problem_id,
+        "title": title.strip(),
+        "difficulty": diff_norm,
+        "example_tests_count": len(example_tests),
+        "message": "Problem imported successfully. You can now solve it using solve_problem.",
+    }
+
+
+@mcp.tool()
+def solve_problem(problem_id: str, max_attempts: int = 5) -> dict:
+    """Generate, judge, and refine a Python solution for an imported or built-in problem."""
+    db_path = _get_active_db_path()
+    store.init(db_path=db_path)
+
+    # Look in custom problems first, then built-in problems
+    problem = store.get_custom_problem(problem_id, db_path=db_path)
+    if not problem:
+        for p in load_problems():
+            if p["id"] == problem_id:
+                problem = p
+                break
+
+    if not problem:
+        return {"error": f"Problem '{problem_id}' not found in custom or built-in problems."}
+
+    # Use LLMClient or fallback to MockLLM if not configured
+    try:
+        client = LLMClient()
+    except Exception:
+        all_probs = load_problems()
+        if problem not in all_probs:
+            all_probs = list(all_probs) + [problem]
+        client = MockLLM(problems=all_probs)
+
+    result = solve_problem_flow(problem, llm_client=client, max_attempts=max_attempts, db_path=db_path)
+    return result
+
+
+@mcp.tool()
+def record_verdict(
+    problem_id: str,
+    verdict: str,
+    runtime_ms: float = 0.0,
+    memory_mb: float = 0.0,
+    notes: str = "",
+) -> dict:
+    """Record official manual submission verdict on LeetCode (e.g. Accepted, Wrong Answer)."""
+    db_path = _get_active_db_path()
+    store.init(db_path=db_path)
+
+    res = store.record_official_verdict(
+        problem_id=problem_id,
+        verdict=verdict,
+        runtime_ms=runtime_ms,
+        memory_mb=memory_mb,
+        notes=notes,
+        db_path=db_path,
+    )
+    return {
+        "status": "recorded",
+        "record": res,
+        "note": "Official verdict saved in progress database.",
+    }
 
 
 if __name__ == "__main__":

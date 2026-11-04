@@ -2,8 +2,10 @@ import argparse
 import sys
 from typing import Optional
 
+import autonomous
 from judge import run_solution
 from llm import LLMClient, LLMError, MockLLM
+import memory
 from problems import get_problems, load_problems
 from prompts import SYSTEM_PROMPT, build_initial_prompt, build_retry_prompt, extract_code
 import store
@@ -26,9 +28,12 @@ def print_summary(problems_list):
 
 def main():
     parser = argparse.ArgumentParser(description="Autonomous LeetCode-Solving Agent")
+    parser.add_argument("--autonomous", action="store_true", help="Launch autonomous batch queue solver")
+    parser.add_argument("--max-problems", type=int, default=5, help="Maximum problems to process in autonomous queue (default: 5)")
     parser.add_argument("--difficulty", choices=["easy", "medium", "hard"], help="Filter problems by difficulty")
     parser.add_argument("--max-attempts", type=int, default=5, help="Maximum attempts per problem (default: 5)")
-    parser.add_argument("--limit", type=int, default=None, help="Maximum number of problems to process")
+    parser.add_argument("--limit", type=int, default=None, help="Maximum number of problems to process (legacy single run)")
+    parser.add_argument("--budget", type=int, default=100, help="Maximum API request budget (default: 100)")
     parser.add_argument("--mock", action="store_true", help="Use MockLLM instead of real LLM API")
     parser.add_argument("--reset", action="store_true", help="Reset saved progress database before starting")
 
@@ -36,9 +41,44 @@ def main():
 
     # 1. Initialize SQLite database
     store.init()
+    memory.seed_default_learning()
     if args.reset:
         store.reset()
         print("Progress database reset successfully.")
+
+    # 2. Autonomous batch solver mode
+    if args.autonomous:
+        print(f"=== Starting Autonomous Batch Solver 4.0 ===")
+        print(f"Max Problems: {args.max_problems} | Max Attempts: {args.max_attempts} | Difficulty Filter: {args.difficulty or 'all'}")
+
+        # Choose LLM Client
+        if args.mock:
+            all_probs = load_problems()
+            custom_probs = store.list_custom_problems()
+            combined = list(all_probs)
+            for cp in custom_probs:
+                if not any(x["id"] == cp["id"] for x in combined):
+                    combined.append(cp)
+            client = MockLLM(problems=combined)
+        else:
+            try:
+                client = LLMClient()
+            except LLMError as e:
+                print(f"LLM Configuration Error: {e}", file=sys.stderr)
+                sys.exit(1)
+
+        result = autonomous.run_autonomous_queue(
+            max_problems=args.max_problems,
+            max_attempts_per_problem=args.max_attempts,
+            difficulty=args.difficulty,
+            api_request_budget=args.budget,
+            llm_client=client,
+        )
+        print(f"\nAutonomous Batch Run Finished: {result.get('status')}")
+        print(f"Run ID: {result.get('run_id')}")
+        print(f"Completed: {result.get('completed_count')} / {result.get('total_problems')}")
+        print(f"Locally Verified: {result.get('verified_count')} | Failed: {result.get('failed_count')}")
+        return
 
     # 2. Load all problems for reference & summary
     try:

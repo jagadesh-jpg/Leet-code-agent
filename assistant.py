@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 
 from judge import run_solution
 from llm import LLMClient, LLMError, MockLLM
+from memory import retrieve_relevant_learning, format_learning_context
 from prompts import (
     SYSTEM_PROMPT,
     build_initial_prompt,
@@ -45,6 +46,10 @@ def solve_problem_flow(
 
     store.init(db_path=db_path)
 
+    # Persistent learning memory retrieval
+    learning_items = retrieve_relevant_learning(problem, limit=3, db_path=db_path)
+    learning_context = format_learning_context(learning_items)
+
     passed = False
     last_code = ""
     last_judge_res: Dict[str, Any] = {}
@@ -54,7 +59,11 @@ def solve_problem_flow(
         attempts_used = attempt_no
 
         if attempt_no == 1:
-            user_prompt = build_initial_prompt(problem)
+            base_prompt = build_initial_prompt(problem)
+            if learning_context:
+                user_prompt = f"{learning_context}\n\n{base_prompt}"
+            else:
+                user_prompt = base_prompt
         else:
             user_prompt = build_retry_prompt(
                 problem=problem,

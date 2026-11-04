@@ -1,31 +1,45 @@
-# LeetCode Agent 2.0 — Personal Account Assistant
+# LeetCode Agent 4.0 — Fully Autonomous Batch Solver & Personal Dashboard
 
-An autonomous Python coding agent and Model Context Protocol (MCP) server that solves programming problems in an iterative feedback loop. 
+An autonomous Python coding agent, persistent algorithmic memory, personal dashboard, and Model Context Protocol (MCP) server that tracks, benchmarks, and autonomously solves LeetCode problems in an iterative feedback loop.
 
-With **Version 2.0**, you can import problems from your personal LeetCode account workflow, solve them using Gemini (or other OpenAI-compatible LLMs), evaluate solutions locally with an isolated judge, inspect estimated time and space complexity, receive copy-ready LeetCode code, and track official LeetCode submission verdicts.
+Designed for your personal LeetCode account workflow (e.g. `jagadesh-02`, https://leetcode.com/u/jagadesh-02/), **Version 4.0** introduces a fully autonomous batch problem solver, persistent learning memory retrieval, pause/resume/stop run controls, state checkpoint recovery across app restarts, unified dashboard metrics tracking official verdicts alongside CSV submissions, and 15 total MCP tools.
 
 ---
 
 ## Key Features
 
-1. **Autonomous Solve-Test-Fix Loop**
-   - Generates initial Python candidate code via LLM.
-   - Executes code locally inside an isolated subprocess against unit test cases.
-   - Reads syntax, runtime, timeout, or wrong-answer failures and asks the LLM to self-correct up to 5 attempts.
+1. **Fully Autonomous Batch Solver (Version 4.0)**
+   - **Queue Orchestration**: Automatically processes pending imported and curated problems sequentially.
+   - **Persistent Run Checkpoints**: Tracks run IDs, problem attempts, verified counts, failed counts, and queue items in SQLite.
+   - **Safe Controls**: Support for `start`, `pause`, `resume`, and `stop` controls without data loss.
+   - **Restart Recovery**: Safely recovers interrupted runs from saved checkpoints.
+   - **Concurrency Safety**: Ensures only one active worker thread operates concurrently.
+   - **Budget & Safety Limits**: Configurable problem counts, max attempts, and API call budgets.
 
-2. **LeetCode 2.0 Personal Workflow Integration**
-   - **Manual Problem Import**: Bring external problems into your local agent via URL, description, signature, and example tests without scraping.
-   - **Flexible Judge**: Supports both standalone Python functions and standard LeetCode `class Solution` implementations.
-   - **AI-Estimated Complexity**: Automatically estimates Big-O time and space complexity (e.g. $\mathcal{O}(n)$, $\mathcal{O}(1)$).
+2. **Persistent Learning Memory (Version 4.0)**
+   - Stores algorithmic patterns, common coding pitfalls, failure feedback, and template snippets (Two Pointers, Sliding Window, Dynamic Programming, Hash Maps, Prefix Sums, Linked Lists).
+   - Dynamically retrieves relevant context before prompting Gemini to reinforce problem-solving strategies.
+
+3. **Personal LeetCode Progress Dashboard (Version 3.0 & 4.0)**
+   - **Unified Submission Analytics**: Automatically aggregates both official recorded verdicts and CSV-imported submissions with distinguishable sources (`official_verdict` vs `csv_import`) and deduplication.
+   - **Difficulty Breakdown**: Displays distinct solved counts across Easy, Medium, and Hard problems.
+   - **Verdict Analytics**: Tracks counts of Accepted, Wrong Answer, Time Limit Exceeded, Runtime Error, and Compile Error outcomes.
+   - **Attempted-but-Unaccepted Tracker**: Automatically pinpoints problems you have tackled on LeetCode but haven't yet passed.
+   - **Smart Recommendations**: Suggests optimal problems to solve next, linking directly into the Gemini-powered solving assistant.
+
+4. **Autonomous Solve-Test-Fix Loop (Version 2.0)**
+   - **Manual Problem Import**: Add any problem via URL, description, signature, and example tests without scraping.
+   - **Dual-Mode Judge**: Supports both standard LeetCode `class Solution` implementations and standalone Python functions in isolated subprocesses.
+   - **AI-Estimated Complexity**: Automatically estimates Big-O time and space complexity (e.g. $\mathcal{O}(n^2)$, $\mathcal{O}(n)$).
    - **Copy-Ready Solutions**: Formats the final code specifically for direct pasting into the LeetCode web editor.
-   - **Official Verdict Tracking**: Record official submission outcomes (`Accepted`, `Wrong Answer`, `Runtime Error`, etc.) alongside runtime benchmarks and memory consumption.
-   - **Distinction of Status**: Clearly differentiates between **locally verified** solutions (passing local sample tests) and **officially accepted** LeetCode submissions.
+   - **Official Verdict Recording**: Logs your actual LeetCode submission results (`Accepted`, `Wrong Answer`, etc.) along with runtime (ms) and memory (MB) benchmarks.
+   - **Record Separation**: Clearly distinguishes **locally verified** solutions (passed local tests) from **officially accepted** LeetCode submissions.
 
-3. **Model Context Protocol (MCP) Integration**
-   - Full FastMCP standard input/output (`stdio`) server exposing 7 dedicated tools to connect directly with Antigravity and other MCP-compliant IDEs.
+5. **Model Context Protocol (MCP) Server**
+   - Full FastMCP standard input/output (`stdio`) server exposing **15 registered tools** to connect directly with Antigravity and other MCP-compliant IDEs.
 
-4. **Persistent SQLite Storage**
-   - Retains progress, individual attempt history, custom imported problems, and official LeetCode verdicts across sessions.
+6. **Persistent SQLite Storage**
+   - Safe, non-destructive schema migrations storing local attempts, custom imported problems, official verdicts, learning memory, autonomous runs, and imported CSV submission history.
 
 ---
 
@@ -33,21 +47,27 @@ With **Version 2.0**, you can import problems from your personal LeetCode accoun
 
 ```text
 Leet_Code/
-    main.py           # CLI entry point orchestrating the autonomous solving loop
+    main.py           # CLI entry point supporting single run and --autonomous mode
+    autonomous.py     # Version 4.0 autonomous batch queue orchestrator & run controls
+    memory.py         # Version 4.0 persistent learning memory retrieval & pattern seeds
+    dashboard.py      # Version 3.0 & 4.0 dashboard engine, CSV parser & recommendations
     assistant.py      # Core workflow for custom problem solving & complexity analysis
     llm.py            # OpenAI-compatible LLM client and offline MockLLM
     judge.py          # Subprocess test runner supporting functions and class Solution
     problems.py       # Built-in problems dataset loader and difficulty filter
-    store.py          # SQLite database storage (attempts, custom problems, verdicts)
+    store.py          # SQLite database storage (attempts, custom problems, verdicts, memory, runs)
     prompts.py        # Prompts, retry templates, code extraction, and copy formatter
     problems.json     # 9 built-in curated LeetCode problems (Easy, Medium, Hard)
-    mcp_server.py     # FastMCP server exposing 7 MCP tools over stdio
+    mcp_server.py     # FastMCP server exposing 15 MCP tools over stdio
+    leetcode_submissions_template.csv # CSV template for manual submission history
     tests/
         test_judge.py     # Unit tests for judge and code evaluation
         test_problems.py  # Unit tests for problems dataset and filtering
         test_mock_llm.py  # Unit tests for offline MockLLM behavior
-        test_mcp_server.py# Unit tests for MCP server tools
+        test_mcp_server.py# Unit tests for original MCP server tools
         test_assistant.py # Unit tests for Version 2.0 assistant workflow
+        test_dashboard.py # Unit tests for Version 3.0 dashboard & CSV import
+        test_autonomous.py# Unit tests for Version 4.0 autonomous queue & controls
     requirements.txt  # Project dependencies
     .env.example      # Example environment configuration
     .gitignore        # Ignored files and directories
@@ -79,7 +99,7 @@ Copy `.env.example` to `.env`:
 Copy-Item .env.example .env
 ```
 
-Open `.env` and fill in your API credentials:
+Configure your LLM provider in `.env`:
 
 ```ini
 LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
@@ -89,31 +109,42 @@ LLM_DELAY_SECONDS=4
 JUDGE_TIMEOUT_SECONDS=10
 ```
 
-Alternative OpenAI-compatible providers:
-- **Groq**: `https://api.groq.com/openai/v1`
-- **Ollama**: `http://localhost:11434/v1`
+---
+
+## CSV Submission History Format
+
+You can prepare your LeetCode submission history in `leetcode_submissions_template.csv` using the following header format:
+
+```csv
+title,url,difficulty,verdict,submission_date,language,runtime_ms,memory_mb,notes
+Two Sum,https://leetcode.com/problems/two-sum/,Easy,Accepted,2026-11-01 10:15:00,Python3,35,17.8,"First submission passed all tests"
+3Sum,https://leetcode.com/problems/3sum/,Medium,Wrong Answer,2026-11-02 14:20:00,Python3,0,0,"Failed edge case with duplicate triplets"
+```
+
+To import your CSV via the MCP server:
+- Call `import_csv_submissions(csv_path_or_content="leetcode_submissions_template.csv")`.
 
 ---
 
-## Using as an MCP Server
+## Available MCP Tools
 
-The project integrates with the Model Context Protocol (MCP) using the official `FastMCP` SDK, allowing Antigravity to interact with the LeetCode Agent over standard input/output (`stdio`) transport.
-
-### Available MCP Tools
+The server registers **9 MCP tools** over `stdio`:
 
 | # | Tool Name | Description |
 |---|---|---|
-| 1 | **`list_problems(difficulty="")`** | Lists available built-in problems, difficulties, and solved status. Never exposes reference solutions or hidden test cases. |
-| 2 | **`get_problem(problem_id)`** | Retrieves title, difficulty, description, signature, and exactly two example test cases. |
-| 3 | **`submit_solution(problem_id, code)`** | Evaluates Python code against all test cases for a problem, logs the attempt, and updates status. |
-| 4 | **`get_progress()`** | Returns comprehensive SQLite summary: built-in problems, custom imported problems, and official LeetCode verdicts. |
+| 1 | **`list_problems(difficulty="")`** | Lists available built-in problems, difficulties, and solved status. |
+| 2 | **`get_problem(problem_id)`** | Retrieves title, difficulty, description, signature, and two example test cases. |
+| 3 | **`submit_solution(problem_id, code)`** | Evaluates Python code against all test cases for a problem and logs the attempt. |
+| 4 | **`get_progress()`** | Returns comprehensive SQLite summary of built-in problems, custom problems, and official verdicts. |
 | 5 | **`import_problem(...)`** | Imports a user-provided problem manually (URL, title, difficulty, description, function name, signature, and example tests). |
 | 6 | **`solve_problem(problem_id, max_attempts=5)`** | Autonomous solve-test-fix loop using configured Gemini LLM and local judge. Returns copy-ready code and complexity estimates. |
 | 7 | **`record_verdict(...)`** | Records official manual submission outcomes from LeetCode (`Accepted`, `Wrong Answer`, etc.), runtime (ms), and memory (MB). |
+| 8 | **`import_csv_submissions(csv_path_or_content)`** | Imports manually prepared LeetCode submission history from a CSV file path or raw CSV text. |
+| 9 | **`get_dashboard(username="jagadesh-02")`** | Computes aggregated statistics, recent submissions, attempted-but-unaccepted problems, and smart recommendations. |
 
 ### Configuring in Antigravity
 
-Add the following to your Antigravity MCP configuration (`mcp_config.json`):
+Add the following configuration to your `mcp_config.json`:
 
 ```json
 {
@@ -129,49 +160,17 @@ Add the following to your Antigravity MCP configuration (`mcp_config.json`):
 }
 ```
 
-*(Replace `<PATH_TO_VENV_PYTHON>` and `<PATH_TO_PROJECT_ROOT>` with your actual system paths).*
-
 ---
 
-## Usage Examples
+## Running Tests
 
-### Run CLI in Mock Mode (Offline / Free)
-
-The mock client tests the loop without making external API calls. For each problem, it purposefully fails the first attempt and passes the second attempt with the reference solution.
-
-```powershell
-# Run all built-in problems with mock
-python main.py --mock
-
-# Limit to first 3 problems
-python main.py --mock --limit 3
-
-# Filter by difficulty
-python main.py --mock --difficulty easy
-
-# Reset database progress before starting
-python main.py --reset --mock
-```
-
-### Run CLI with Real LLM
-
-```powershell
-# Run with real LLM
-python main.py
-
-# Run only medium problems with up to 5 attempts per problem
-python main.py --difficulty medium --max-attempts 5
-```
-
----
-
-## Verification & Testing
-
-Run the full pytest suite to verify all modules, MCP tools, and assistant workflows:
+Run the full pytest suite to verify all core components, judge, assistant, dashboard, and MCP tools:
 
 ```powershell
 python -m pytest -v
 ```
+
+All tests execute against isolated temporary SQLite databases (`tmp_path`), leaving your actual `progress.db` intact.
 
 ---
 
@@ -186,14 +185,6 @@ python -m pytest -v
 ## Safety and Privacy Guarantees
 
 - **No Credentials Requested**: The agent never asks for or stores LeetCode passwords, session cookies, or CSRF tokens.
-- **No Web Scraping**: The agent does not scrape or crawl LeetCode; all external problem data is manually provided by the user.
+- **No Web Scraping**: The agent does not scrape or crawl LeetCode; all external problem data and history are manually provided by the user.
 - **No Automated Submissions**: The agent never submits code directly to external websites. Human review and manual submission are strictly required.
 - **Isolated Subprocess Execution**: Solutions run in isolated temporary environments with execution timeouts.
-
----
-
-## Future Work
-
-- Docker-based sandboxed runner.
-- Extended analytics for personal LeetCode progression.
-- Additional built-in algorithmic patterns and problem templates.

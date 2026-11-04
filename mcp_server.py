@@ -5,8 +5,11 @@ from typing import Any, Dict, List, Optional
 from mcp.server.fastmcp import FastMCP
 
 from assistant import solve_problem_flow, validate_problem_url
+import autonomous
+from dashboard import get_dashboard_data, import_submissions_from_csv
 from judge import run_solution
 from llm import LLMClient, LLMError, MockLLM
+import memory
 from problems import get_problems, load_problems
 import store
 
@@ -287,6 +290,88 @@ def record_verdict(
         "record": res,
         "note": "Official verdict saved in progress database.",
     }
+
+
+@mcp.tool()
+def import_csv_submissions(csv_path_or_content: str) -> dict:
+    """Import manually prepared LeetCode submission history from a CSV file path or raw CSV text."""
+    db_path = _get_active_db_path()
+    res = import_submissions_from_csv(csv_path_or_content, db_path=db_path)
+    return res
+
+
+@mcp.tool()
+def get_dashboard(username: str = "jagadesh-02") -> dict:
+    """Get aggregated statistics, recent submissions, attempted-but-unsolved problems, and solve-next recommendations."""
+    db_path = _get_active_db_path()
+    data = get_dashboard_data(username=username, db_path=db_path)
+    return data
+
+
+# ============================================================================
+# Version 4.0 Autonomous Batch Worker Tools
+# ============================================================================
+
+@mcp.tool()
+def start_autonomous_run(
+    max_problems: int = 5,
+    max_attempts: int = 5,
+    difficulty: str = "",
+    budget: int = 100,
+) -> dict:
+    """Start autonomous batch problem solving across pending custom and curated LeetCode problems."""
+    db_path = _get_active_db_path()
+    diff = difficulty.strip() if difficulty and difficulty.strip() else None
+    res = autonomous.start_autonomous_run(
+        max_problems=max_problems,
+        max_attempts_per_problem=max_attempts,
+        difficulty=diff,
+        api_request_budget=budget,
+        db_path=db_path,
+        run_in_background=True,
+    )
+    return res
+
+
+@mcp.tool()
+def get_run_status(run_id: str = "") -> dict:
+    """Get live or checkpointed status, progress counts, and queue items for autonomous runs."""
+    db_path = _get_active_db_path()
+    rid = run_id.strip() if run_id and run_id.strip() else None
+    return autonomous.get_run_status(run_id=rid, db_path=db_path)
+
+
+@mcp.tool()
+def pause_autonomous_run(run_id: str = "") -> dict:
+    """Safely pause an active autonomous run after the current attempt completes."""
+    db_path = _get_active_db_path()
+    rid = run_id.strip() if run_id and run_id.strip() else None
+    return autonomous.pause_autonomous_run(run_id=rid, db_path=db_path)
+
+
+@mcp.tool()
+def resume_autonomous_run(run_id: str = "") -> dict:
+    """Resume a paused or interrupted autonomous run from its saved SQLite checkpoint."""
+    db_path = _get_active_db_path()
+    rid = run_id.strip() if run_id and run_id.strip() else None
+    return autonomous.resume_autonomous_run(run_id=rid, db_path=db_path, run_in_background=True)
+
+
+@mcp.tool()
+def stop_autonomous_run(run_id: str = "") -> dict:
+    """Safely stop and terminate an autonomous batch run."""
+    db_path = _get_active_db_path()
+    rid = run_id.strip() if run_id and run_id.strip() else None
+    return autonomous.stop_autonomous_run(run_id=rid, db_path=db_path)
+
+
+@mcp.tool()
+def get_learning_memory(category: str = "", limit: int = 20) -> list[dict]:
+    """Retrieve persistent learning memory patterns, lessons, and code templates."""
+    db_path = _get_active_db_path()
+    memory.seed_default_learning(db_path=db_path)
+    cat = category.strip() if category and category.strip() else None
+    return store.get_learning_entries(category=cat, limit=limit, db_path=db_path)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,5 @@
+title,url,difficulty,verdict,submission_date,language,runtime_ms,memory_mb,notes
+Two Sum,https://leetcode.com/problems/two-sum/,Easy,Accepted,2026-11-01 10:15:00,Python3,35,17.8,"First submission passed all tests"
+3Sum,https://leetcode.com/problems/3sum/,Medium,Wrong Answer,2026-11-02 14:20:00,Python3,0,0,"Failed edge case with duplicate triplets"
+Trapping Rain Water,https://leetcode.com/problems/trapping-rain-water/,Hard,Time Limit Exceeded,2026-11-03 09:30:00,Python3,0,0,"O(n^2) brute force timed out"
+Best Time to Buy and Sell Stock,https://leetcode.com/problems/best-time-to-buy-and-sell-stock/,Medium,Accepted,2026-11-03 18:30:19,Python3,21,28.22,"Official submission accepted: beats 94.56% runtime"

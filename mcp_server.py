@@ -317,6 +317,7 @@ def start_autonomous_run(
     max_problems: int = 5,
     max_attempts: int = 5,
     difficulty: str = "",
+    language: str = "python",
     budget: int = 100,
 ) -> dict:
     """Start autonomous batch problem solving across pending custom and curated LeetCode problems."""
@@ -326,6 +327,7 @@ def start_autonomous_run(
         max_problems=max_problems,
         max_attempts_per_problem=max_attempts,
         difficulty=diff,
+        language=language,
         api_request_budget=budget,
         db_path=db_path,
         run_in_background=True,

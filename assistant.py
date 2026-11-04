@@ -34,6 +34,7 @@ def solve_problem_flow(
     problem: Dict[str, Any],
     llm_client: Any,
     max_attempts: int = 5,
+    language: str = "python",
     db_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Autonomous solve-test-fix loop for an individual problem.
@@ -55,6 +56,9 @@ def solve_problem_flow(
     last_judge_res: Dict[str, Any] = {}
     attempts_used = 0
 
+    from prompts import get_system_prompt_for_language
+    sys_prompt = get_system_prompt_for_language(language)
+
     for attempt_no in range(1, max_attempts + 1):
         attempts_used = attempt_no
 
@@ -73,12 +77,12 @@ def solve_problem_flow(
                 error_trace=last_judge_res.get("error"),
             )
 
-        resp = llm_client.ask(SYSTEM_PROMPT, user_prompt)
+        resp = llm_client.ask(sys_prompt, user_prompt)
         code = extract_code(resp)
         last_code = code
 
         # Run candidate code in isolated judge subprocess
-        judge_res = run_solution(code, problem)
+        judge_res = run_solution(code, problem, language=language)
         last_judge_res = judge_res
 
         status = judge_res["status"]
@@ -96,11 +100,11 @@ def solve_problem_flow(
 
         if status == "passed":
             passed = True
-            store.mark_result(prob_id, "solved", attempt_no, db_path=db_path)
+            store.mark_result(prob_id, "solved", attempt_no, language=language, db_path=db_path)
             break
 
     if not passed:
-        store.mark_result(prob_id, "failed", max_attempts, db_path=db_path)
+        store.mark_result(prob_id, "failed", max_attempts, language=language, db_path=db_path)
 
     # Complexity estimate (AI-generated)
     time_complexity = "O(n) [AI estimate]"

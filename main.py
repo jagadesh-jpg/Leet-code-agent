@@ -29,6 +29,7 @@ def print_summary(problems_list):
 def main():
     parser = argparse.ArgumentParser(description="Autonomous LeetCode-Solving Agent")
     parser.add_argument("--autonomous", action="store_true", help="Launch autonomous batch queue solver")
+    parser.add_argument("--language", choices=["python", "c", "cpp", "java"], default="python", help="Target programming language (default: python)")
     parser.add_argument("--max-problems", type=int, default=5, help="Maximum problems to process in autonomous queue (default: 5)")
     parser.add_argument("--difficulty", choices=["easy", "medium", "hard"], help="Filter problems by difficulty")
     parser.add_argument("--max-attempts", type=int, default=5, help="Maximum attempts per problem (default: 5)")
@@ -71,6 +72,7 @@ def main():
             max_problems=args.max_problems,
             max_attempts_per_problem=args.max_attempts,
             difficulty=args.difficulty,
+            language=args.language,
             api_request_budget=args.budget,
             llm_client=client,
         )

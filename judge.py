@@ -147,7 +147,12 @@ if __name__ == "__main__":
 """
 
 
-def run_solution(code: str, problem: Dict[str, Any], timeout: int = 10) -> Dict[str, Any]:
+from adapters import UnifiedJudge
+
+
+def run_solution(code: str, problem: Dict[str, Any], timeout: int = 10, language: str = "python") -> Dict[str, Any]:
+    if language and language.lower() not in ["python", "py", "python3"]:
+        return UnifiedJudge.run_solution(code, problem, language=language, timeout=timeout)
     total_tests = len(problem.get("tests", []))
     if not code or not code.strip():
         return {

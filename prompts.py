@@ -5,6 +5,17 @@ from typing import Any, Dict, Optional
 SYSTEM_PROMPT = "You are an expert Python programmer. Reply with exactly one Python code block containing the complete solution and nothing else. Use only the Python standard library."
 
 
+def get_system_prompt_for_language(language: str = "python") -> str:
+    lang = (language or "python").strip().lower()
+    if lang in ["c"]:
+        return "You are an expert C programmer. Reply with exactly one C code block (```c ... ```) containing the complete solution and nothing else. Use standard C libraries."
+    if lang in ["cpp", "c++"]:
+        return "You are an expert C++ programmer. Reply with exactly one C++ code block (```cpp ... ```) containing the complete solution and nothing else. Use standard C++ libraries and class Solution."
+    if lang in ["java"]:
+        return "You are an expert Java programmer. Reply with exactly one Java code block (```java ... ```) containing the complete solution and nothing else. Implement class Solution."
+    return SYSTEM_PROMPT
+
+
 def build_initial_prompt(problem: Dict[str, Any]) -> str:
     examples = problem.get("tests", [])[:2]
     example_strs = []
@@ -72,8 +83,8 @@ def extract_code(response_text: str) -> str:
     if not response_text:
         return ""
 
-    # 1. Extract first ```python ... ``` code block
-    py_pattern = r"```python\s*([\s\S]*?)```"
+    # 1. Extract first ```python/cpp/c/java ... ``` code block
+    py_pattern = r"```(?:python|cpp|c\+\+|c|java)?\s*([\s\S]*?)```"
     py_match = re.search(py_pattern, response_text, re.IGNORECASE)
     if py_match:
         return py_match.group(1).strip()

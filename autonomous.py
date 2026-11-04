@@ -32,6 +32,7 @@ def get_pending_queue(
     difficulty: Optional[str] = None,
     max_problems: int = 5,
     skip_locally_verified: bool = True,
+    language: str = "python",
     db_path: Optional[str | Path] = None,
 ) -> List[Dict[str, Any]]:
     """Assemble pending eligible problems from custom imported and curated datasets."""
@@ -66,11 +67,11 @@ def get_pending_queue(
         diff_norm = difficulty.strip().lower()
         candidates = [p for p in candidates if p.get("difficulty", "").strip().lower() == diff_norm]
 
-    # Filter locally verified if requested
+    # Filter locally verified if requested (language specific)
     filtered = []
     for p in candidates:
         pid = p["id"]
-        if skip_locally_verified and store.is_solved(pid, db_path=db_path):
+        if skip_locally_verified and store.is_solved(pid, language=language, db_path=db_path):
             continue
         filtered.append(p)
 
@@ -81,6 +82,7 @@ def run_autonomous_queue(
     max_problems: int = 5,
     max_attempts_per_problem: int = 5,
     difficulty: Optional[str] = None,
+    language: str = "python",
     api_request_budget: int = 100,
     api_delay_seconds: float = 0.0,
     llm_client: Any = None,
@@ -100,6 +102,7 @@ def run_autonomous_queue(
             difficulty=difficulty,
             max_problems=max_problems,
             skip_locally_verified=True,
+            language=language,
             db_path=db_path,
         )
         problem_ids = [p["id"] for p in pending]
@@ -212,6 +215,7 @@ def run_autonomous_queue(
                 problem=prob_def,
                 llm_client=client,
                 max_attempts=max_attempts_per_problem,
+                language=language,
                 db_path=db_path,
             )
             attempts = res.get("attempts", 1)
@@ -300,6 +304,7 @@ def start_autonomous_run(
     max_problems: int = 5,
     max_attempts_per_problem: int = 5,
     difficulty: Optional[str] = None,
+    language: str = "python",
     api_request_budget: int = 100,
     api_delay_seconds: float = 0.0,
     llm_client: Any = None,
@@ -328,6 +333,7 @@ def start_autonomous_run(
                     max_problems=max_problems,
                     max_attempts_per_problem=max_attempts_per_problem,
                     difficulty=difficulty,
+                    language=language,
                     api_request_budget=api_request_budget,
                     api_delay_seconds=api_delay_seconds,
                     llm_client=llm_client,
@@ -353,6 +359,7 @@ def start_autonomous_run(
                 max_problems=max_problems,
                 max_attempts_per_problem=max_attempts_per_problem,
                 difficulty=difficulty,
+                language=language,
                 api_request_budget=api_request_budget,
                 api_delay_seconds=api_delay_seconds,
                 llm_client=llm_client,

@@ -28,6 +28,18 @@ def init(db_path: Optional[str | Path] = None) -> None:
         )
         cursor.execute(
             """
+            CREATE TABLE IF NOT EXISTS language_progress (
+                problem_id TEXT,
+                language TEXT,
+                status TEXT,
+                attempts INTEGER,
+                solved_at TEXT,
+                PRIMARY KEY (problem_id, language)
+            )
+            """
+        )
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS attempts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 problem_id TEXT,
@@ -138,12 +150,28 @@ def init(db_path: Optional[str | Path] = None) -> None:
         conn.commit()
 
 
-def is_solved(problem_id: str, db_path: Optional[str | Path] = None) -> bool:
+def is_solved(problem_id: str, language: Optional[str] = None, db_path: Optional[str | Path] = None) -> bool:
     with get_connection(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT status FROM progress WHERE problem_id = ?", (problem_id,))
-        row = cursor.fetchone()
-        return bool(row and row["status"] == "solved")
+        if language:
+            lang_norm = language.strip().lower()
+            cursor.execute(
+                "SELECT status FROM language_progress WHERE problem_id = ? AND language = ?",
+                (problem_id, lang_norm),
+            )
+            row = cursor.fetchone()
+            if row:
+                return bool(row["status"] == "solved")
+            # If checking default python and not yet in language_progress, fallback to progress table
+            if lang_norm in ["python", "py", "python3"]:
+                cursor.execute("SELECT status FROM progress WHERE problem_id = ?", (problem_id,))
+                row_legacy = cursor.fetchone()
+                return bool(row_legacy and row_legacy["status"] == "solved")
+            return False
+        else:
+            cursor.execute("SELECT status FROM progress WHERE problem_id = ?", (problem_id,))
+            row = cursor.fetchone()
+            return bool(row and row["status"] == "solved")
 
 
 def log_attempt(
@@ -152,6 +180,7 @@ def log_attempt(
     code: str,
     status: str,
     error: Optional[str] = None,
+    language: str = "python",
     db_path: Optional[str | Path] = None,
 ) -> None:
     now = datetime.now(timezone.utc).isoformat()
@@ -171,11 +200,27 @@ def mark_result(
     problem_id: str,
     status: str,
     attempts: int,
+    language: str = "python",
     db_path: Optional[str | Path] = None,
 ) -> None:
     now = datetime.now(timezone.utc).isoformat() if status == "solved" else None
+    lang_norm = (language or "python").strip().lower()
     with get_connection(db_path) as conn:
         cursor = conn.cursor()
+        # 1. Update language_progress table
+        cursor.execute(
+            """
+            INSERT INTO language_progress (problem_id, language, status, attempts, solved_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(problem_id, language) DO UPDATE SET
+                status = excluded.status,
+                attempts = excluded.attempts,
+                solved_at = excluded.solved_at
+            """,
+            (problem_id, lang_norm, status, attempts, now),
+        )
+
+        # 2. Update global legacy progress table (if python or first solved)
         cursor.execute(
             """
             INSERT INTO progress (problem_id, status, attempts, solved_at)

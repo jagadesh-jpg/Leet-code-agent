@@ -39,10 +39,14 @@ def sanitize_error_text(text: str) -> str:
     """Sanitize secrets, API keys, and auth parameters from error messages."""
     if not text:
         return ""
-    # Strip potential API keys / Bearer tokens
+    # Strip potential API keys / Bearer tokens / Cloud credentials
     sanitized = re.sub(r"AIza[0-9A-Za-z-_]+", "[REDACTED_API_KEY]", text)
     sanitized = re.sub(r"AQ\.[0-9A-Za-z-_]+", "[REDACTED_API_KEY]", sanitized)
-    sanitized = re.sub(r"(key|api_key|token|auth)=([0-9A-Za-z-_]+)", r"\1=[REDACTED]", sanitized, flags=re.IGNORECASE)
+    sanitized = re.sub(r"sk-[a-zA-Z0-9_-]{20,}", "[REDACTED_API_KEY]", sanitized)
+    sanitized = re.sub(r"ghp_[a-zA-Z0-9_]{15,}", "[REDACTED_API_KEY]", sanitized)
+    sanitized = re.sub(r"github_pat_[a-zA-Z0-9_]{20,}", "[REDACTED_API_KEY]", sanitized)
+    sanitized = re.sub(r"AKIA[0-9A-Z]{16}", "[REDACTED_API_KEY]", sanitized)
+    sanitized = re.sub(r"(key|api_key|token|auth|secret|password)=([0-9A-Za-z-_\.]+)", r"\1=[REDACTED]", sanitized, flags=re.IGNORECASE)
     sanitized = re.sub(r"Bearer\s+([0-9A-Za-z-_\.]+)", "Bearer [REDACTED]", sanitized, flags=re.IGNORECASE)
     return sanitized
 

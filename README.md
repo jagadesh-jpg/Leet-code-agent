@@ -333,6 +333,22 @@ Leet-code-agent/
 
 ---
 
+## Security & Responsible Disclosure
+
+### Secret Management & Isolation
+- **Environment Exclusions**: The private credentials file `.env` is strictly excluded from version control via `.gitignore`. Never commit or push an active `.env` file.
+- **Template Hygiene**: `.env.example` contains non-functional documentation placeholders only.
+- **Error Sanitization**: All error payloads pass through `sanitize_error_text()` in `llm.py`, stripping API tokens, Bearer authentication strings, and credential parameters before writing to logs or terminal streams.
+- **Local Testing**: The test suite uses synthetic placeholders and `MockLLM` test doubles—running unit tests never incurs external API costs or transmits tokens.
+
+### Accidental Credential Exposure
+If you accidentally commit or expose an API key or service token:
+1. **Immediate Revocation**: Go to your provider console ([Google AI Studio](https://aistudio.google.com/) or [OpenAI Platform](https://platform.openai.com/api-keys)) and immediately **revoke/delete the exposed key**. Do not simply delete the commit or push a second commit masking the key, as historical commits remain accessible in Git trees and cached web mirrors.
+2. **Issue Replacement**: Generate a fresh key and place it exclusively in your local `.env`.
+3. **History Rewriting**: If an unpushed local commit contains a secret, amend it (`git commit --amend`) or reset it before pushing to a remote repository.
+
+---
+
 ## Visual Demonstration Placeholders
 
 ```text

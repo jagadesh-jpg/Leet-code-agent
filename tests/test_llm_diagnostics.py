@@ -40,6 +40,18 @@ def test_sanitize_error_text():
     clean_bearer = sanitize_error_text(raw_bearer)
     assert "Bearer [REDACTED]" in clean_bearer
 
+    raw_sk = "Call failed with sk-FAKE_TEST_KEY_FOR_UNIT_TESTING_1234567890"
+    assert "[REDACTED_API_KEY]" in sanitize_error_text(raw_sk)
+    assert "sk-FAKE" not in sanitize_error_text(raw_sk)
+
+    raw_gh = "Token: ghp_FAKE_GITHUB_PERSONAL_ACCESS_TOKEN_TEST"
+    assert "[REDACTED_API_KEY]" in sanitize_error_text(raw_gh)
+
+    raw_param = "https://api.example.com/endpoint?password=mySecretPassword123&api_key=secretKeyVal"
+    clean_param = sanitize_error_text(raw_param)
+    assert "password=[REDACTED]" in clean_param
+    assert "api_key=[REDACTED]" in clean_param
+
 
 def test_parse_gemini_dict_body_rpm():
     body = {

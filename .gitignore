@@ -1,6 +1,12 @@
 # Environment and credentials (ensure .env.example remains trackable)
 .env
+.env.*
 .env*.local
+*.key
+*.pem
+*.cert
+credentials.json
+!*.example
 !.env.example
 
 # Virtual environments

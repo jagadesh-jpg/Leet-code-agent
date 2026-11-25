@@ -263,6 +263,7 @@ class LLMClient:
         backup_base_url: Optional[str] = None,
         backup_api_key: Optional[str] = None,
         backup_model: Optional[str] = None,
+        budget_limit: Optional[int] = None,
     ):
         self.base_url = base_url or os.getenv("LLM_BASE_URL")
         self.api_key = api_key or os.getenv("LLM_API_KEY")
@@ -277,6 +278,21 @@ class LLMClient:
             self.delay_seconds = float(delay_seconds if delay_seconds is not None else delay_env)
         except ValueError:
             self.delay_seconds = 4.0
+
+        self.budget_limit = budget_limit
+
+        # Granular Request & Fallback Accounting Metrics
+        self.metrics = {
+            "primary_requests": 0,
+            "primary_successes": 0,
+            "primary_failures": 0,
+            "primary_retries": 0,
+            "backup_requests": 0,
+            "backup_successes": 0,
+            "backup_failures": 0,
+            "total_requests": 0,
+        }
+        self.backup_diagnostic: Optional[str] = None
 
         if not self.api_key or not self.model:
             raise LLMError(
@@ -294,11 +310,32 @@ class LLMClient:
         except ImportError:
             raise LLMError("openai package is not installed. Please run 'pip install openai'.")
 
+    def _check_budget(self) -> None:
+        """Enforce strict request ceiling before any network transmission."""
+        if self.budget_limit is not None and self.metrics["total_requests"] >= self.budget_limit:
+            raise LLMError(
+                f"API request budget limit of {self.budget_limit} requests reached.",
+                error_type="budget_exhausted",
+            )
+
     def _call_backup(self, system_prompt: str, user_prompt: str) -> Optional[str]:
         if not self.backup_client or not self.backup_model:
+            self.backup_diagnostic = "backup_not_configured"
             return None
+
+        # Check hard request budget before transmitting backup request
+        if self.budget_limit is not None and self.metrics["total_requests"] >= self.budget_limit:
+            self.backup_diagnostic = "budget_exhausted_before_backup"
+            raise LLMError(
+                f"API request budget limit of {self.budget_limit} reached before fallback call.",
+                error_type="budget_exhausted",
+            )
+
+        self.metrics["backup_requests"] += 1
+        self.metrics["total_requests"] += 1
+
         try:
-            # Minimal parameter shape compatible with both OpenAI and reasoning/mini models
+            # Minimal parameter shape compatible with standard and reasoning/mini models
             response = self.backup_client.chat.completions.create(
                 model=self.backup_model,
                 messages=[
@@ -308,10 +345,15 @@ class LLMClient:
             )
             choice = response.choices[0]
             content = choice.message.content or ""
+            self.metrics["backup_successes"] += 1
+            self.backup_diagnostic = "backup_succeeded"
             if self.delay_seconds > 0:
                 time.sleep(self.delay_seconds)
             return content
-        except Exception:
+        except Exception as e:
+            self.metrics["backup_failures"] += 1
+            sanitized_err = sanitize_error_text(str(e))
+            self.backup_diagnostic = f"backup_failed: {sanitized_err}"
             return None
 
     def ask(self, system_prompt: str, user_prompt: str) -> str:
@@ -320,6 +362,14 @@ class LLMClient:
         last_exception = None
 
         for attempt in range(max_attempts):
+            # Check hard request budget before primary attempt or retry transmission
+            self._check_budget()
+
+            self.metrics["primary_requests"] += 1
+            self.metrics["total_requests"] += 1
+            if attempt > 0:
+                self.metrics["primary_retries"] += 1
+
             try:
                 response = self.client.chat.completions.create(
                     model=self.model,
@@ -330,12 +380,14 @@ class LLMClient:
                 )
                 choice = response.choices[0]
                 content = choice.message.content or ""
+                self.metrics["primary_successes"] += 1
 
                 if self.delay_seconds > 0:
                     time.sleep(self.delay_seconds)
                 return content
 
             except Exception as e:
+                self.metrics["primary_failures"] += 1
                 last_exception = e
                 parsed = parse_gemini_error(e)
                 error_type = parsed["error_type"]
@@ -347,11 +399,14 @@ class LLMClient:
                     backup_res = self._call_backup(system_prompt, user_prompt)
                     if backup_res is not None:
                         return backup_res
+                    diag = parsed.get("diagnostic_summary") or str(e)
+                    if self.backup_diagnostic:
+                        diag = f"{diag} | Fallback: {self.backup_diagnostic}"
                     raise LLMError(
                         f"Daily quota or billing limit exhausted: {e}",
                         error_type=error_type,
                         details=parsed["details"],
-                        diagnostic_summary=parsed.get("diagnostic_summary"),
+                        diagnostic_summary=diag,
                     ) from e
 
                 # Transient rate limit (RPM/TPM): apply exponential backoff + random jitter
@@ -372,11 +427,15 @@ class LLMClient:
                         if backup_res is not None:
                             return backup_res
 
+                    diag = parsed.get("diagnostic_summary") or str(last_exception)
+                    if self.backup_diagnostic:
+                        diag = f"{diag} | Fallback: {self.backup_diagnostic}"
+
                     raise LLMError(
                         f"LLM request failed after {max_attempts} attempts: {last_exception}",
                         error_type=error_type,
                         details=parsed["details"],
-                        diagnostic_summary=parsed.get("diagnostic_summary"),
+                        diagnostic_summary=diag,
                     ) from last_exception
 
         raise LLMError(f"LLM request failed: {last_exception}")

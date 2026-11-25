@@ -144,12 +144,14 @@ def run_autonomous_queue(
     # Determine LLM client
     if llm_client is None:
         try:
-            client = LLMClient()
+            client = LLMClient(budget_limit=api_request_budget)
         except Exception:
             all_probs = load_problems()
             client = MockLLM(problems=all_probs)
     else:
         client = llm_client
+        if hasattr(client, "budget_limit") and client.budget_limit is None:
+            client.budget_limit = api_request_budget
 
     queue_items = store.get_autonomous_queue_items(run_id, db_path=db_path)
     total = len(queue_items)
@@ -237,7 +239,11 @@ def run_autonomous_queue(
                 db_path=db_path,
             )
             attempts = res.get("attempts", 1)
-            api_calls += attempts
+            # If client provides granular total_requests metric, use it; otherwise fallback to solution turns
+            if hasattr(client, "metrics") and isinstance(client.metrics, dict) and "total_requests" in client.metrics:
+                api_calls = client.metrics["total_requests"]
+            else:
+                api_calls += attempts
 
             if res.get("passed", False):
                 verified_count += 1
@@ -276,9 +282,33 @@ def run_autonomous_queue(
 
         except LLMError as e:
             api_errors += 1
-            # Check if quota or rate limit is exhausted
+            if hasattr(client, "metrics") and isinstance(client.metrics, dict) and "total_requests" in client.metrics:
+                api_calls = client.metrics["total_requests"]
+            # Check if quota, rate limit, or budget limit is exhausted
+            is_budget_failure = (e.error_type == "budget_exhausted") or ("budget" in str(e).lower())
             is_quota_failure = (e.error_type in ["daily_quota_exhausted", "billing_limit", "rpm_limit", "tpm_limit", "transient_rate_limit"]) or ("429" in str(e))
-            if is_quota_failure:
+            if is_budget_failure:
+                # Stop autonomous run cleanly due to hard request budget ceiling
+                store.update_autonomous_queue_item(
+                    run_id=run_id,
+                    problem_id=pid,
+                    status="queued",
+                    error=f"API Request Budget Reached: {e}",
+                    db_path=db_path,
+                )
+                store.update_autonomous_run(
+                    run_id,
+                    {
+                        "status": "stopped",
+                        "current_problem_id": pid,
+                        "api_calls_count": api_calls,
+                        "api_errors_count": api_errors,
+                        "error_message": f"API request budget limit of {api_request_budget} calls reached.",
+                    },
+                    db_path=db_path,
+                )
+                break
+            elif is_quota_failure:
                 diag_msg = getattr(e, "diagnostic_summary", None) or str(e)
                 # Pause autonomous run gracefully without marking the problem failed or verified
                 store.update_autonomous_queue_item(
@@ -293,6 +323,7 @@ def run_autonomous_queue(
                     {
                         "status": "paused",
                         "current_problem_id": pid,
+                        "api_calls_count": api_calls,
                         "api_errors_count": api_errors,
                         "error_message": f"Paused due to Gemini API rate/quota limit: {diag_msg}",
                     },

@@ -1,225 +1,245 @@
-# LeetCode Agent 5.0 — Multi-Language Autonomous Solver & Personal Dashboard
+# LeetCode Agent 6.0: Multi-Language Autonomous Coding Agent & DSA Engine
 
-An autonomous coding agent, multi-language execution engine, persistent algorithmic memory, personal progress dashboard, and Model Context Protocol (MCP) server that benchmarks, tracks, and autonomously solves Data Structures & Algorithms (DSA) problems in an iterative feedback loop.
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
+[![Tests: 80 Passed](https://img.shields.io/badge/tests-80%20passed-brightgreen.svg)](https://github.com/jagadesh-jpg/Leet-code-agent)
+[![Supported Languages](https://img.shields.io/badge/languages-Python%20%7C%20C%20%7C%20C%2B%2B%20%7C%20Java-orange.svg)](https://github.com/jagadesh-jpg/Leet-code-agent)
+[![MCP Server](https://img.shields.io/badge/MCP-15%20Tools%20FastMCP-purple.svg)](https://modelcontextprotocol.io/)
 
-Designed for your personal LeetCode account workflow (e.g. `jagadesh-02`, https://leetcode.com/u/jagadesh-02/), **Version 5.0** introduces a modular multi-language execution engine supporting **Python 3**, **C**, **C++**, and **Java**, a `UnifiedJudge` architecture, compiler detection for Windows/MSYS2 toolchains, language-specific progress tracking, autonomous batch solving with live pause/resume/stop controls, and 15 registered MCP tools.
+An autonomous multi-language algorithmic problem-solving engine, isolated execution judge, persistent algorithmic memory, and Model Context Protocol (MCP) server.
+
+LeetCode Agent autonomously formulates solutions, compiles and executes code locally across **Python, C, C++, and Java**, evaluates edge-case test harnesses, extracts compiler and runtime diagnostics, and iteratively self-corrects until all tests pass—benchmarking progress in SQLite and exposing real-time analytics to LLMs and developer IDEs.
 
 ---
 
-## Architecture Overview
+## The Problem It Solves
+
+Practicing Data Structures & Algorithms (DSA) or evaluating LLM code generation typically suffers from three major bottlenecks:
+
+1. **Passive Generation Without Execution**: Most AI coding assistants generate code snippets but cannot verify correctness, leaving syntax errors, off-by-one bugs, and edge-case failures undetected.
+2. **Language Monoculture**: Most coding benchmarks are restricted to Python, failing to test or debug language-specific idioms such as manual pointer manipulation in C, container lifecycles in C++, or object references in Java.
+3. **Fragile Iteration Loops**: When an LLM produces a `Wrong Answer` or `Compile Error`, developers must manually copy-paste errors back and forth. LeetCode Agent closes this loop autonomously with bounded attempt budgets, persistent learning memory, and fault recovery.
+
+---
+
+## Key Features
+
+- **Autonomous Solve-Judge-Fix Loop**: Iterative feedback cycle where candidate solutions are executed, diagnosed on failure (`compile_error`, `runtime_error`, `wrong_answer`, `timeout`), and corrected using previous attempt context.
+- **Polyglot Execution (`UnifiedJudge`)**: Full support for **Python 3**, **C (C11)**, **C++ (C++17)**, and **Java (JDK 17+)** with compiler auto-detection for GCC/MSYS2, Clang, and javac.
+- **Data Structure Test Harnesses**: Native code generators for Arrays, Strings, Linked Lists (`ListNode`), and Binary Trees (`TreeNode`) across all four languages.
+- **Persistent Algorithmic Memory**: Vector-like pattern store that indexes algorithmic strategies (Two Pointers, Sliding Window, DP, Trees, Graphs) and injects contextual lessons into prompts before code generation.
+- **Fault-Tolerant Queue Management**: Background worker threads with live `pause`, `resume`, `stop`, and checkpoint recovery after process interruptions.
+- **Dual-LLM Rate Limit Fallback**: Built-in HTTP 429/503 quota diagnostics that automatically switch between primary (Gemini) and secondary (OpenAI-compatible) providers.
+- **15 Registered FastMCP Tools**: First-class Model Context Protocol integration enabling Anthropic Claude Desktop, Cursor, or Antigravity IDE to invoke the solver and query progress via standard tool calls.
+- **Personal LeetCode Analytics Dashboard**: Deduplicated tracking of local problem verifications alongside manual official LeetCode submission history.
+- **Zero-Credit Offline Demonstration**: Full simulation mode (`--demo`) exercising the 4-language failure-and-correction workflow without external API calls.
+- **Batch Problem Importer**: Validates JSON problem definitions against local reference solutions before ingesting them into the database.
+
+---
+
+## Architecture
 
 ```mermaid
 flowchart TD
-    User["User / IDE / MCP Client"] --> Orchestrator["Autonomous Batch Orchestrator (autonomous.py)"]
-    Orchestrator --> DB[("SQLite Storage (store.py)")]
-    Orchestrator --> Memory["Persistent Learning Memory (memory.py)"]
-    Memory -. "Relevant Patterns Context" .-> Gemini["Real Gemini LLM API (llm.py)"]
-    Orchestrator --> Gemini
-    Gemini -- "Language Candidate Code" --> Judge["UnifiedJudge (adapters.py)"]
-    
-    subgraph MultiLanguageAdapters ["Modular Language Adapters"]
-        Judge --> PyAd["PythonLanguageAdapter (Python 3.11+)"]
-        Judge --> CAd["CLanguageAdapter (GCC / Clang / MSVC)"]
-        Judge --> CppAd["CppLanguageAdapter (G++ / Clang++ / MSVC)"]
-        Judge --> JavaAd["JavaLanguageAdapter (JDK javac / java)"]
+    User["Developer / IDE / Claude Desktop / Antigravity"] --> Interface
+
+    subgraph Interface ["Interfaces & Orchestration"]
+        CLI["CLI Entrypoint (main.py)"]
+        MCPServer["FastMCP Server (mcp_server.py)"]
+        Orchestrator["Batch Queue Orchestrator (autonomous.py)"]
     end
 
-    PyAd --> Runner["Isolated Subprocess Execution & Test Harness"]
-    CAd --> Runner
-    CppAd --> Runner
-    JavaAd --> Runner
+    CLI --> Orchestrator
+    MCPServer --> Orchestrator
+    MCPServer --> SingleSolve["Single Solver (assistant.py)"]
 
-    Runner -- "Pass / Compile Error / Wrong Answer / Stderr" --> Orchestrator
-    Orchestrator -- "Feedback & Traceback" --> Gemini
-    Orchestrator --> Dashboard["Progress Dashboard (dashboard.py)"]
+    Orchestrator --> DB[("SQLite Database (store.py)")]
+    Orchestrator --> Memory["Algorithmic Memory (memory.py)"]
+    Memory -. "Pattern Ingestion" .-> LLMEngine["LLM Engine (llm.py)"]
+    Orchestrator --> LLMEngine
+
+    subgraph LLMEngine ["LLM Layer & Quota Diagnostics"]
+        Primary["Primary LLM (Gemini API)"]
+        Fallback["Backup LLM (OpenAI / Groq)"]
+        Mock["Offline MockLLM"]
+        Primary -. "429 Rate Limit" .-> Fallback
+    end
+
+    LLMEngine -- "Candidate Solution Code" --> Judge["UnifiedJudge (adapters.py)"]
+
+    subgraph ExecutionEngine ["Polyglot Execution & Test Harnesses (harness.py)"]
+        Judge --> PyRunner["Python 3.11 Subprocess"]
+        Judge --> CRunner["GCC / MSYS2 Compiler (solution.exe)"]
+        Judge --> CppRunner["G++ (C++17) Compiler (solution.exe)"]
+        Judge --> JavaRunner["JDK javac / java Subprocess"]
+    end
+
+    ExecutionEngine -- "Pass / Compile Error / Wrong Answer / Timeout" --> FeedbackLoop{"Passed All Tests?"}
+    FeedbackLoop -- "Yes" --> MarkSolved["Mark Verified in SQLite & Record Metrics"]
+    FeedbackLoop -- "No" --> RetryPrompt["Construct Feedback & Diagnostic Traceback"]
+    RetryPrompt --> LLMEngine
+    MarkSolved --> Dashboard["Personal Dashboard & Analytics (dashboard.py)"]
 ```
 
 ---
 
-## Key Capabilities (Version 5.0)
+## Step-by-Step Autonomous Workflow
 
-1. **Multi-Language Execution Engine & UnifiedJudge**
-   - Modular language adapter architecture supporting **Python 3**, **C**, **C++**, and **Java**.
-   - Language-specific test harnesses (`harness.py`) preserving native interface conventions:
-     - **C**: Pure C function interfaces (`int search(int* nums, int numsSize, int target)`) with explicit length parameters; no invented C++ classes.
-     - **C++**: Standard LeetCode class syntax (`class Solution { public: int search(vector<int>& nums, int target) { ... } };`).
-     - **Java**: Standard LeetCode class syntax (`class Solution { public int search(int[] nums, int target) { ... } }`).
-     - **Python 3**: Both standard `class Solution` and standalone functions.
-   - Captures compilation output (`compile_error`), execution output (`runtime_error`), stdout, stderr, and test pass counts.
-
-2. **Windows & MSYS2 Compiler Auto-Detection**
-   - Automatically probes and links GCC (`C:\msys64\ucrt64\bin\gcc.exe`), G++ (`C:\msys64\ucrt64\bin\g++.exe`), and JDK (`javac.exe`/`java.exe`).
-   - Dynamically adds compiler directories to the process environment so dependent runtime DLLs are found without requiring global system reboots.
-   - Accurately reports missing runtimes as `runtime_unavailable` without silent failure or false passes.
-
-3. **Language-Specific Progress Tracking**
-   - Progress is tracked independently per language in SQLite (`language_progress` table).
-   - Solving a problem in Python does **not** mark it solved in Java, C, or C++, keeping pending problem queues open for practice in other languages.
-   - Re-running the queue in the same language honors `skip_locally_verified=True` and advances to remaining problems.
-
-4. **Real Gemini API Autonomous Solving Loop**
-   - Uses real Google Gemini API models (`gemini-3.6-flash`, `gemini-1.5-flash`, etc.) via standard OpenAI-compatible endpoints.
-   - Language-specific prompting (`get_system_prompt_for_language()`) instructs the model on correct syntax, types, and libraries.
-   - Automated retry loop sends compiler diagnostics, tracebacks, and failed test cases back to Gemini for self-correction up to `max_attempts`.
-
-5. **Autonomous Queue Controls & Checkpoints**
-   - `start_autonomous_run`, `pause_autonomous_run`, `resume_autonomous_run`, and `stop_autonomous_run`.
-   - Thread-safe worker lock ensures only one batch run executes concurrently.
-   - Persists run metadata and problem queues in `autonomous_runs` and `autonomous_queue_items` for recovery after app restarts.
-   - Configurable API request budget safeguards against unintended quota usage.
-
-6. **Persistent Learning Memory**
-   - Stores common DSA patterns and lessons (Two Pointers, Sliding Window, Dynamic Programming, Hash Maps, Prefix Sums, Linked Lists).
-   - Injects relevant memory context into prompts before asking Gemini to solve problems.
-
-7. **Personal LeetCode Dashboard & 15 MCP Tools**
-   - Unified analytics tracking both manual CSV imports and verified official LeetCode verdicts with clear source attribution (`official_verdict` vs `csv_import`) and deduplication.
+1. **Problem Dispatch**: The agent loads curated problems (`problems.json`) or custom imported problems (`store.py`), prioritizing unsolved problems in the selected language.
+2. **Context Enrichment**: Algorithmic memory retrieves relevant heuristics and pitfalls based on problem tags and descriptions.
+3. **Generation**: The LLM receives a language-specific system prompt requesting raw, syntactically idiomatic code (e.g. `class Solution` for Java/C++, standalone functions with explicit sizes for C).
+4. **Sandboxed Compilation & Execution**: The `UnifiedJudge` generates an isolated test harness in a temporary directory, applies memory limits and a strict 10-second timeout, and executes against the test cases.
+5. **Verdict & Diagnosis**:
+   - **`passed`**: Marked locally verified in SQLite (`language_progress`).
+   - **`compile_error` / `runtime_error` / `wrong_answer`**: Stderr, stdout, and failing test inputs are captured and formatted into a structured retry prompt.
+6. **Self-Correction Loop**: The agent attempts fixes up to `--max-attempts`. If the model exhausts its attempt budget or hits API limits, the run safely checkpoints its state for future resumption.
 
 ---
 
-## Project Structure
+## Technology Stack
 
-```text
-Leet_Code/
-    main.py           # CLI entry point supporting single run and --autonomous mode
-    autonomous.py     # Version 4.0/5.0 autonomous queue orchestrator & run controls
-    adapters.py       # Version 5.0 UnifiedJudge and language adapters (Python, C, C++, Java)
-    languages.py      # Version 5.0 compiler detection & PATH configuration
-    harness.py        # Version 5.0 language-specific test harness builders
-    memory.py         # Persistent learning memory retrieval & pattern seeds
-    dashboard.py      # Unified dashboard engine, CSV parser & recommendations
-    assistant.py      # Core workflow for single problem solving & complexity analysis
-    llm.py            # Real OpenAI/Gemini LLM client and offline MockLLM
-    judge.py          # Subprocess test runner with timeout enforcement
-    problems.py       # Built-in problems dataset loader and difficulty filter
-    store.py          # SQLite database storage (attempts, language_progress, verdicts, runs)
-    prompts.py        # Language-aware system prompts, retry templates, code extraction
-    problems.json     # 9 curated LeetCode problems (Easy, Medium, Hard)
-    mcp_server.py     # FastMCP server exposing all 15 registered MCP tools over stdio
-    leetcode_submissions_template.csv # CSV template for manual submission history
-    tests/
-        test_judge.py          # Tests for judge execution & timeouts
-        test_problems.py       # Tests for problem dataset and filtering
-        test_mock_llm.py       # Tests for offline MockLLM behavior
-        test_mcp_server.py     # Tests for MCP server tools
-        test_assistant.py      # Tests for single-problem assistant workflow
-        test_dashboard.py      # Tests for dashboard analytics & deduplication
-        test_autonomous.py     # Tests for autonomous queue, pause, resume, and stop
-        test_languages.py      # Tests for compiler detection & language adapters
-        test_lang_isolation.py # Tests for language-specific progress isolation
-    requirements.txt  # Project dependencies
-    .env.example      # Example environment configuration
-    .gitignore        # Ignored files and directories
-    README.md         # Documentation and guide
+| Layer | Technologies & Tools |
+| :--- | :--- |
+| **Runtime & Core** | Python 3.11, PowerShell, Windows MSYS2 UCRT64 toolchain |
+| **Language Toolchains** | GCC (C11), G++ (C++17), OpenJDK 17+ (`javac`, `java`), Python 3.11 |
+| **LLM Protocols** | OpenAI-compatible Client, Google Gemini API, Custom Multi-Language `MockLLM` |
+| **Agent Protocols** | FastMCP (Model Context Protocol) over stdio |
+| **Database & State** | SQLite 3 (`store.py`) with thread-safe connection pooling and WAL mode |
+| **Testing & Quality** | `pytest`, `pytest-mock`, isolated `tmp_path` fixture databases |
+
+---
+
+## Installation (Windows PowerShell)
+
+### 1. Clone the Repository
+```powershell
+git clone https://github.com/jagadesh-jpg/Leet-code-agent.git
+Set-Location -Path "Leet-code-agent"
 ```
 
----
-
-## Setup & Installation
-
-### 1. Virtual Environment & Dependencies
-
+### 2. Set Up Virtual Environment
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-### 2. Environment Configuration
+### 3. Optional Multi-Language Compiler Setup
+- **Python**: Included with virtual environment.
+- **Java**: Install [OpenJDK 17+](https://adoptium.net/) and ensure `javac` and `java` are available on your `PATH`.
+- **C & C++**: Install [MSYS2](https://www.msys2.org/) with UCRT64 toolchain:
+  ```powershell
+  # Inside MSYS2 terminal:
+  pacman -S mingw-w64-ucrt-x86_64-gcc
+  ```
+  The compiler adapter automatically searches `C:\msys64\ucrt64\bin\gcc.exe` and `g++.exe`.
 
-Copy `.env.example` to `.env`:
+---
+
+## Configuration
+
+Copy `.env.example` to create your private `.env` file:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-Configure your credentials in `.env` (never commit this file):
+Edit `.env` with your API credentials (this file is ignored by Git and never committed):
 
 ```ini
+# Primary Provider (e.g. Google Gemini via OpenAI-compatible endpoint)
 LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
 LLM_API_KEY=your_gemini_api_key_here
-LLM_MODEL=gemini-3.6-flash
+LLM_MODEL=gemini-2.5-flash
+
+# Optional Secondary Backup Provider (Automatic fallback on 429/503 rate limits)
+LLM2_BASE_URL=https://api.openai.com/v1
+LLM2_API_KEY=your_backup_api_key_here
+LLM2_MODEL=gpt-4o-mini
+
 LLM_DELAY_SECONDS=4
 JUDGE_TIMEOUT_SECONDS=10
 ```
 
-### 3. Compiler Setup (Optional for C/C++/Java)
-
-- **Python 3**: Requires Python 3.10+ (already provided by your virtual environment).
-- **Java**: Install JDK 17+ and ensure `javac` and `java` are in your PATH.
-- **C & C++ (Windows)**:
-  - Install MSYS2 with UCRT64 toolchain: `pacman -S mingw-w64-ucrt-x86_64-gcc`.
-  - The adapter automatically detects `C:\msys64\ucrt64\bin\gcc.exe` and `g++.exe`.
+> [!NOTE]
+> You can run the entire system offline using `--mock` or `--demo` without providing any API keys.
 
 ---
 
-## CLI Usage Examples
+## Usage Commands
 
-### 1. Autonomous Batch Queue
-
-Process up to 5 problems in the queue using **Python**:
+### 1. Run Offline 4-Language Demonstration
+Runs an end-to-end failure-and-correction demonstration across **Python, C, C++, and Java** using a temporary isolated SQLite database:
 ```powershell
-.\.venv\Scripts\python.exe main.py --autonomous --max-problems 5 --max-attempts 3
+.\.venv\Scripts\python.exe main.py --demo
 ```
 
-Process problems using **Java**:
+### 2. View Problem Catalog & Solved Status
+Displays a formatted status table of all curated and custom imported problems:
 ```powershell
-.\.venv\Scripts\python.exe main.py --autonomous --language java --max-problems 5
+.\.venv\Scripts\python.exe main.py --list-problems
 ```
 
-Process problems using **C++**:
+### 3. View Analytics Dashboard
+Inspect tracked submissions, solved tallies per programming language, attempt distributions, and active worker statuses:
 ```powershell
-.\.venv\Scripts\python.exe main.py --autonomous --language cpp --max-problems 5 --budget 20
+.\.venv\Scripts\python.exe main.py --dashboard
 ```
 
-Process problems using **C**:
+### 4. Run Autonomous Batch Solving (Mock / Offline Mode)
+Run the autonomous solver sequentially across queued problems without burning API credits:
 ```powershell
-.\.venv\Scripts\python.exe main.py --autonomous --language c --difficulty easy --max-problems 3
-```
-
-### 2. Offline Mock Mode (Testing without API Usage)
-
-Run the autonomous queue offline using the built-in mock LLM:
-```powershell
+# Python
 .\.venv\Scripts\python.exe main.py --autonomous --mock --max-problems 2
+
+# C++
+.\.venv\Scripts\python.exe main.py --autonomous --mock --language cpp --max-problems 1
+
+# Java
+.\.venv\Scripts\python.exe main.py --autonomous --mock --language java --max-problems 1
+```
+
+### 5. Run with Live LLM (Gemini / OpenAI)
+```powershell
+.\.venv\Scripts\python.exe main.py --autonomous --language python --difficulty easy --max-problems 3
+```
+
+### 6. Batch Import Custom Problem Datasets
+Ingest and validate new problems with reference solutions through the local judge:
+```powershell
+.\.venv\Scripts\python.exe import_batch.py problems_batch_example.json
 ```
 
 ---
 
-## All 15 Registered MCP Tools
+## Model Context Protocol (MCP) Integration
 
-The FastMCP server (`mcp_server.py`) provides 15 standard tools over `stdio`:
+The project exposes **15 standard FastMCP tools** over `stdio` in [mcp_server.py](file:///D:/Leet_code/mcp_server.py), allowing any MCP client (Claude Desktop, Antigravity IDE, Cursor) to control the agent:
 
-| # | Tool Name | Parameters | Description |
-|---|---|---|---|
-| 1 | **`list_problems`** | `difficulty` | Lists available built-in problems and local solved status. |
-| 2 | **`get_problem`** | `problem_id` | Retrieves title, difficulty, description, signature, and example tests. |
-| 3 | **`submit_solution`** | `problem_id, code` | Runs candidate code against test cases in the local judge. |
-| 4 | **`get_progress`** | None | Returns summary of built-in problems, custom imports, and official verdicts. |
-| 5 | **`import_problem`** | `url, title, difficulty, description, function_name, signature, example_tests` | Imports a user-supplied problem statement manually without scraping. |
-| 6 | **`solve_problem`** | `problem_id, max_attempts` | Solves a single problem with real Gemini and formats copy-ready code. |
-| 7 | **`record_verdict`** | `problem_id, verdict, runtime_ms, memory_mb, notes` | Logs official manual LeetCode submission benchmarks. |
-| 8 | **`import_csv_submissions`** | `csv_path_or_content` | Imports manual LeetCode submission history from CSV. |
-| 9 | **`get_dashboard`** | `username` | Computes dashboard analytics, recent submissions, and recommendations. |
-| 10 | **`start_autonomous_run`** | `max_problems, max_attempts, difficulty, language, budget` | Launches an autonomous batch queue run in the background. |
-| 11 | **`get_run_status`** | `run_id` | Checks live progress, counts, and queue items of an autonomous run. |
-| 12 | **`pause_autonomous_run`** | `run_id` | Safely pauses an active run after the current attempt completes. |
-| 13 | **`resume_autonomous_run`** | `run_id` | Resumes an autonomous run from its saved SQLite checkpoint. |
-| 14 | **`stop_autonomous_run`** | `run_id` | Safely terminates an autonomous run. |
-| 15 | **`get_learning_memory`** | `category, limit` | Retrieves persistent algorithmic patterns and code templates. |
+| MCP Tool Name | Description |
+| :--- | :--- |
+| `list_problems` | Returns problem catalog filtered by difficulty and solved state. |
+| `get_problem` | Returns problem description, signature, and example tests. |
+| `submit_solution` | Evaluates Python candidate code against the local judge and records attempts. |
+| `get_progress` | Returns solved tallies, custom imports, and manual official verdicts. |
+| `import_problem` | Ingests a new problem statement with test cases manually. |
+| `solve_problem` | Invokes single-problem autonomous workflow with complexity analysis. |
+| `record_verdict` | Logs official manual submission benchmarks (runtime ms, memory MB). |
+| `import_csv_submissions` | Bulk imports manual submission history from CSV files. |
+| `get_dashboard` | Returns unified stats, attempted-but-unsolved problems, and recommendations. |
+| `start_autonomous_run` | Launches an asynchronous background autonomous batch queue. |
+| `get_run_status` | Inspects live execution status, attempt counts, and queue items. |
+| `pause_autonomous_run` | Gracefully signals the worker to pause after the current problem attempt. |
+| `resume_autonomous_run` | Resumes an interrupted or paused run from its saved SQLite checkpoint. |
+| `stop_autonomous_run` | Terminates an active background autonomous run cleanly. |
+| `get_learning_memory` | Retrieves persistent algorithmic heuristics and code templates. |
 
-### Configuring in Antigravity or MCP IDEs
-
-Add to `mcp_config.json`:
-
+### Client Configuration (`mcp_config.json`)
 ```json
 {
   "mcpServers": {
     "leetcode-agent": {
       "command": "D:\\Leet_code\\.venv\\Scripts\\python.exe",
-      "args": [
-        "D:\\Leet_code\\mcp_server.py"
-      ],
+      "args": ["D:\\Leet_code\\mcp_server.py"],
       "cwd": "D:\\Leet_code"
     }
   }
@@ -228,36 +248,129 @@ Add to `mcp_config.json`:
 
 ---
 
-## Running Automated Tests
+## Test Suite & Verification
 
-Run the full automated test suite (all 45 tests):
+The project includes 80 comprehensive automated tests covering judge execution, compiler adapters, rate-limit diagnostics, database transactions, tree/linked-list harnesses, and MCP tools:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest -v
+.\.venv\Scripts\python.exe -m pytest -q
 ```
 
-All tests execute against isolated temporary SQLite databases (`tmp_path`), leaving your actual `progress.db` and official submission history intact.
+**Verified Test Result**:
+```text
+80 passed in 156.23s (0:02:36)
+```
+
+All tests execute against isolated temporary SQLite databases (`tmp_path`), guaranteeing that your local `progress.db` and existing records remain untouched.
 
 ---
 
-## Important Notices & Current Limitations
+## Project Structure
 
-> [!NOTE]
-> **Problem-Specific Test Harnesses**:
-> Automated multi-language evaluation depends on having a corresponding test harness for each problem's input/output types. While Python supports dynamic argument unpacking for arbitrary JSON inputs, compiled languages (C, C++, Java) require type-specific test harness generators (such as those in `harness.py`). If a problem requires complex custom data structures (e.g. linked lists or binary tree nodes) in compiled languages, a tailored harness generator must be provided.
+```text
+Leet-code-agent/
+│
+├── main.py                          # CLI entry point (--demo, --dashboard, --list-problems, --autonomous)
+├── autonomous.py                    # Autonomous batch queue orchestrator & thread lifecycle management
+├── adapters.py                      # UnifiedJudge & language adapters (Python, C, C++, Java)
+├── harness.py                       # Native test harness builders (Array, String, ListNode, TreeNode)
+├── languages.py                     # Compiler auto-detection & environment PATH configuration
+├── judge.py                         # Subprocess execution judge with timeouts and memory limits
+├── llm.py                           # LLMClient (Gemini/OpenAI), fallback handler, and MockLLM
+├── assistant.py                     # Single-problem solve flow, validation, and complexity analysis
+├── memory.py                        # Persistent learning memory retrieval & algorithmic heuristics
+├── dashboard.py                     # Analytics engine, CSV import parser, and recommendations
+├── mcp_server.py                    # FastMCP server exposing 15 tools over stdio
+├── store.py                         # SQLite storage layer (runs, attempts, language_progress, memory)
+├── prompts.py                       # Multi-language prompts, retry templates, and code extraction
+├── problems.py                      # Curated problem dataset loader and difficulty filters
+├── import_batch.py                  # Batch problem JSON importer with local judge verification
+├── demo_mock.py                     # Standalone offline multi-language demonstration runner
+│
+├── problems.json                    # 9 Curated core problems (Easy, Medium, Hard)
+├── problems_batch_example.json      # Reference template for batch problem imports
+├── problems_batch_my10.json         # 10 Curated Easy problems with 4-language signatures
+├── problems_batch_medium10.json     # 10 Curated Medium problems with 4-language signatures
+│
+├── tests/                           # 15 Test suites (80 passing tests)
+│   ├── test_autonomous.py           # Queue execution, pause/resume, multi-language solve tests
+│   ├── test_dashboard.py            # Dashboard analytics, language progress, and CSV deduplication
+│   ├── test_import_batch.py         # Batch problem validation and schema rejection tests
+│   ├── test_judge.py                # Judge execution, timeouts, syntax errors, and nested list comparison
+│   ├── test_languages.py            # Compiler availability and adapter execution tests
+│   ├── test_lang_isolation.py       # Independent language progress verification
+│   ├── test_linked_lists.py         # ListNode test harness verification (Python, C, C++, Java)
+│   ├── test_trees.py                # TreeNode test harness verification (Python, C, C++, Java)
+│   ├── test_llm_diagnostics.py      # Error sanitization and backup client rate-limit fallbacks
+│   ├── test_rate_limits.py          # Quota category parsing and pause on exhaustion
+│   ├── test_mcp_server.py           # FastMCP tool contract and parameter tests
+│   ├── test_assistant.py            # URL validation and single-problem solve flow
+│   ├── test_mock_llm.py             # MockLLM multi-language and retry simulation tests
+│   └── test_problems.py             # Dataset integrity and difficulty filtering
+│
+├── requirements.txt                 # Project dependencies (openai, mcp, pytest, python-dotenv)
+├── .env.example                     # Environment template without credentials
+└── .gitignore                       # Git exclusion rules (*.db, .env, build binaries, scratch files)
+```
 
-> [!IMPORTANT]
-> **Local Verification $\neq$ Official LeetCode Acceptance**:
-> - **`locally_verified`**: Indicates that candidate code passed the local sample unit test cases inside the isolated judge. It does **not** constitute official acceptance by LeetCode or guarantee passing LeetCode's comprehensive hidden test cases or strict memory constraints.
-> - **Official Accepted**: Recorded only when you manually submit your solution on LeetCode and log the result via `record_verdict`.
+---
+
+## Limitations & Security Notice
 
 > [!WARNING]
-> **Subprocess Isolation vs. Security Sandboxing**:
-> The local judge executes code inside isolated temporary subprocesses with execution timeouts (`JUDGE_TIMEOUT_SECONDS = 10`) and directory cleanups. Subprocess execution limits hanging processes and accidental side effects, but it is **not** an OS-level virtualization or secure container sandbox. Do not run untrusted or adversarial arbitrary code.
+> **Local Subprocess Execution — Not an OS Sandbox**:
+> The local judge executes candidate code using local system processes (`python.exe`, `solution.exe`, `java.exe`). While execution is restricted to temporary directories with strict timeouts (10 seconds default), output caps, and standard stream redirection, this is **local execution** and not a secure hypervisor or kernel sandbox. Do not run untrusted or adversarial arbitrary code outside a container.
+
+> [!IMPORTANT]
+> **Terms of Service & Anti-Scraping Compliance**:
+> - The agent **never** scrapes, crawls, or submits code to `leetcode.com`.
+> - Problem definitions are provided through local JSON datasets or manual entry.
+> - Benchmarks against official LeetCode submissions are logged manually via CSV or `record_verdict`.
 
 > [!NOTE]
-> **Zero Web Scraping & Zero Automated Submissions**:
-> In compliance with LeetCode's Terms of Service:
-> - The agent **never** requests or stores LeetCode passwords, cookies, or session tokens.
-> - The agent **never** scrapes, crawls, or makes automated HTTP calls to `leetcode.com`.
-> - The agent **never** submits code to external sites automatically. All problem imports and submission records are provided and confirmed manually by the user.
+> **API Quotas**:
+> Free-tier Gemini endpoints have strict Request-Per-Minute (RPM) and Request-Per-Day (RPD) quotas. LeetCode Agent includes request delay parameters (`LLM_DELAY_SECONDS`) and secondary backup provider fallback to mitigate transient rate limits.
+
+---
+
+## Visual Demonstration Placeholders
+
+```text
++---------------------------------------------------------------------------------------+
+|                                    DEMO WORKFLOW                                      |
+|                                                                                       |
+|  [main.py --demo]                                                                     |
+|  ├── Python Attempt 1 [Fail]  --> Diagnostic Feedback --> Attempt 2 [VERIFIED]       |
+|  ├── C      Attempt 1 [Fail]  --> Diagnostic Feedback --> Attempt 2 [VERIFIED]       |
+|  ├── C++    Attempt 1 [Fail]  --> Diagnostic Feedback --> Attempt 2 [VERIFIED]       |
+|  └── Java   Attempt 1 [Fail]  --> Diagnostic Feedback --> Attempt 2 [VERIFIED]       |
+|                                                                                       |
+|  Terminal Dashboard:                                                                  |
+|  [CPP: 1 Solved] [JAVA: 1 Solved] [PYTHON: 25 Solved] [Attempts: 39 Tracked]          |
++---------------------------------------------------------------------------------------+
+```
+*(Insert terminal recording or SVG demo asset here)*
+
+---
+
+## Roadmap & Future Enhancements
+
+- [ ] **Dockerized Container Isolation**: Enclose the `UnifiedJudge` in lightweight Linux containers (`gVisor` / `Docker`) for secure multi-tenant execution.
+- [ ] **Rust & Go Adapters**: Extend `BaseLanguageAdapter` to support Rust (`rustc`/`cargo`) and Go (`go test`).
+- [ ] **Local LLM Integration**: Streamlined out-of-the-box support for quantized local models via Ollama or vLLM.
+- [ ] **Interactive Web UI**: Lightweight Next.js/React frontend connecting directly to the FastMCP server.
+
+---
+
+## License
+
+This project is currently unlicensed for open-source distribution. All rights are reserved by the repository owner. If you wish to use, fork, or adapt this software, please refer to the repository owner or request permission.
+
+---
+
+## Author & Contact
+
+**Jagadesh**  
+- **GitHub**: [@jagadesh-jpg](https://github.com/jagadesh-jpg)  
+- **Repository**: [https://github.com/jagadesh-jpg/Leet-code-agent](https://github.com/jagadesh-jpg/Leet-code-agent)  
+- **LeetCode Profile**: [jagadesh-02](https://leetcode.com/u/jagadesh-02/)

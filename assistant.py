@@ -63,7 +63,7 @@ def solve_problem_flow(
         attempts_used = attempt_no
 
         if attempt_no == 1:
-            base_prompt = build_initial_prompt(problem)
+            base_prompt = build_initial_prompt(problem, language=language)
             if learning_context:
                 user_prompt = f"{learning_context}\n\n{base_prompt}"
             else:

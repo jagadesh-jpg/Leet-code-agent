@@ -62,10 +62,19 @@ def init(db_path: Optional[str | Path] = None) -> None:
                 function_name TEXT,
                 signature TEXT,
                 tests_json TEXT,
-                created_at TEXT
+                created_at TEXT,
+                reference_solution TEXT
             )
             """
         )
+        # Additive migration: add reference_solution column if missing in existing custom_problems table
+        cursor.execute("PRAGMA table_info(custom_problems)")
+        cp_cols = [c[1] for c in cursor.fetchall()]
+        if "reference_solution" not in cp_cols:
+            try:
+                cursor.execute("ALTER TABLE custom_problems ADD COLUMN reference_solution TEXT")
+            except Exception:
+                pass
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS official_verdicts (
@@ -298,6 +307,7 @@ def save_custom_problem(
     function_name: str,
     signature: str,
     tests: List[Dict[str, Any]],
+    reference_solution: Optional[str] = None,
     db_path: Optional[str | Path] = None,
 ) -> None:
     now = datetime.now(timezone.utc).isoformat()
@@ -307,8 +317,8 @@ def save_custom_problem(
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO custom_problems (id, url, title, difficulty, description, function_name, signature, tests_json, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO custom_problems (id, url, title, difficulty, description, function_name, signature, tests_json, created_at, reference_solution)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 url = excluded.url,
                 title = excluded.title,
@@ -317,9 +327,10 @@ def save_custom_problem(
                 function_name = excluded.function_name,
                 signature = excluded.signature,
                 tests_json = excluded.tests_json,
-                created_at = excluded.created_at
+                created_at = excluded.created_at,
+                reference_solution = COALESCE(excluded.reference_solution, custom_problems.reference_solution)
             """,
-            (problem_id, url, title, difficulty, description, function_name, signature, tests_json, now),
+            (problem_id, url, title, difficulty, description, function_name, signature, tests_json, now, reference_solution),
         )
         conn.commit()
 
@@ -332,7 +343,7 @@ def get_custom_problem(problem_id: str, db_path: Optional[str | Path] = None) ->
         row = cursor.fetchone()
         if not row:
             return None
-        return {
+        data = {
             "id": row["id"],
             "url": row["url"],
             "title": row["title"],
@@ -344,6 +355,9 @@ def get_custom_problem(problem_id: str, db_path: Optional[str | Path] = None) ->
             "created_at": row["created_at"],
             "compare": "exact",
         }
+        if "reference_solution" in row.keys() and row["reference_solution"]:
+            data["reference_solution"] = row["reference_solution"]
+        return data
 
 
 def list_custom_problems(db_path: Optional[str | Path] = None) -> List[Dict[str, Any]]:
@@ -354,7 +368,7 @@ def list_custom_problems(db_path: Optional[str | Path] = None) -> List[Dict[str,
         rows = cursor.fetchall()
         result = []
         for row in rows:
-            result.append({
+            item = {
                 "id": row["id"],
                 "url": row["url"],
                 "title": row["title"],
@@ -364,7 +378,10 @@ def list_custom_problems(db_path: Optional[str | Path] = None) -> List[Dict[str,
                 "signature": row["signature"],
                 "tests": json.loads(row["tests_json"]),
                 "created_at": row["created_at"],
-            })
+            }
+            if "reference_solution" in row.keys() and row["reference_solution"]:
+                item["reference_solution"] = row["reference_solution"]
+            result.append(item)
         return result
 
 

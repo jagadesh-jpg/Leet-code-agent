@@ -404,8 +404,27 @@ class MockLLM:
             if prob_id in self._problems_by_id:
                 return self._problems_by_id[prob_id]
             # Construct a minimal problem dict from the prompt if not registered
-            fn_match = re.search(r"def\s+([a-zA-Z0-9_]+)\s*\(", user_prompt)
-            fn_name = fn_match.group(1) if fn_match else "solve"
+            fn_match = re.search(r"(?:def|void|int|public\s+[a-zA-Z0-9_<>[\]]+)\s+([a-zA-Z0-9_]+)\s*\(", user_prompt)
+            if fn_match:
+                fn_name = fn_match.group(1)
+            else:
+                # Try finding in batch files on disk
+                fn_name = "solve"
+                from pathlib import Path
+                import glob
+                import json
+                root_dir = Path(__file__).resolve().parent
+                for batch_path in root_dir.glob("problems_batch*.json"):
+                    try:
+                        with open(batch_path, "r", encoding="utf-8") as bf:
+                            b_data = json.load(bf)
+                            if isinstance(b_data, list):
+                                for bp in b_data:
+                                    if bp.get("id") == prob_id and bp.get("function_name"):
+                                        fn_name = bp["function_name"]
+                                        return bp
+                    except Exception:
+                        pass
             return {"id": prob_id, "function_name": fn_name}
 
         # 2. Match exact id on word boundaries
@@ -426,20 +445,42 @@ class MockLLM:
 
         return None
 
-    def ask(self, system_prompt: str, user_prompt: str) -> str:
+    def _detect_language(self, system_prompt: str, user_prompt: str) -> str:
+        """Unambiguously determine target language from system prompt or explicit language marker."""
+        sys_lower = (system_prompt or "").lower()
+        if "expert c++ programmer" in sys_lower or "```cpp" in sys_lower:
+            return "cpp"
+        if "expert c programmer" in sys_lower or "```c " in sys_lower or "```c\n" in sys_lower:
+            return "c"
+        if "expert java programmer" in sys_lower or "```java" in sys_lower:
+            return "java"
+        if "expert python programmer" in sys_lower or "python code block" in sys_lower:
+            return "python"
+
+        # Check explicit instructions in user prompt
+        u_lower = (user_prompt or "").lower()
+        if "provide only the c++ code block" in u_lower:
+            return "cpp"
+        if "provide only the c code block" in u_lower:
+            return "c"
+        if "provide only the java code block" in u_lower:
+            return "java"
+        if "provide only the python code block" in u_lower:
+            return "python"
+
+        return "python"
+
+    def ask(self, system_prompt: str, user_prompt: str, language: Optional[str] = None) -> str:
         problem = self._find_problem(user_prompt)
         prob_id = problem["id"] if problem else "unknown"
 
-        # Determine target language from prompt
-        combined_prompt = f"{system_prompt} {user_prompt}".lower()
-        if "c++" in combined_prompt or "cpp" in combined_prompt:
-            lang = "cpp"
-        elif "expert c programmer" in combined_prompt or "language: c\n" in combined_prompt or "in c (" in combined_prompt or "using c " in combined_prompt or "c language" in combined_prompt or "```c " in combined_prompt or "```c\n" in combined_prompt:
-            lang = "c"
-        elif "java" in combined_prompt:
-            lang = "java"
+        # Determine target language cleanly
+        if language and language.strip():
+            lang = language.strip().lower()
+            if lang in ["c++", "cpp"]:
+                lang = "cpp"
         else:
-            lang = "python"
+            lang = self._detect_language(system_prompt, user_prompt)
 
         attempt_key = f"{prob_id}:{lang}"
         current_count = self._problem_attempts.get(attempt_key, 0)
@@ -460,7 +501,7 @@ class MockLLM:
         else:
             # Second attempt onwards: return reference solution for the target language if available
             ref_solutions = problem.get("reference_solutions", {}) if problem else {}
-            if isinstance(ref_solutions, dict) and lang in ref_solutions:
+            if isinstance(ref_solutions, dict) and lang in ref_solutions and ref_solutions[lang]:
                 return f"```{lang}\n{ref_solutions[lang].strip()}\n```"
 
             # Check problem-specific standard reference implementations
@@ -492,7 +533,35 @@ class MockLLM:
                 else:
                     return "```python\nclass Solution:\n    def search(self, nums: list[int], target: int) -> int:\n        l, r = 0, len(nums) - 1\n        while l <= r:\n            mid = (l + r) // 2\n            if nums[mid] == target:\n                return mid\n            elif nums[mid] < target:\n                l = mid + 1\n            else:\n                r = mid - 1\n        return -1\n```"
 
-            if problem and "reference_solution" in problem:
-                ref = problem["reference_solution"].strip()
-                return f"```python\n{ref}\n```"
-            return f"```python\ndef {fn_name}(*args, **kwargs):\n    return None\n```"
+            # Check problem dictionary reference_solution (typically Python)
+            if problem and problem.get("reference_solution"):
+                ref = str(problem["reference_solution"]).strip()
+                return f"```{lang}\n{ref}\n```"
+
+            # Fallback for mock: check batch files on disk if reference solution was not stored in problem object
+            if prob_id:
+                from pathlib import Path
+                import glob
+                import json
+                root_dir = Path(__file__).resolve().parent
+                for batch_path in root_dir.glob("problems_batch*.json"):
+                    try:
+                        with open(batch_path, "r", encoding="utf-8") as bf:
+                            b_data = json.load(bf)
+                            if isinstance(b_data, list):
+                                for bp in b_data:
+                                    if bp.get("id") == prob_id and bp.get("reference_solution"):
+                                        ref = str(bp["reference_solution"]).strip()
+                                        return f"```{lang}\n{ref}\n```"
+                    except Exception:
+                        pass
+
+            # Explicit mock limitation when no reference solution exists
+            if lang == "python":
+                return f"```python\ndef {fn_name}(*args, **kwargs):\n    # MockLLM Notice: No reference solution available for problem '{prob_id}'\n    return None\n```"
+            elif lang == "c":
+                return f"```c\nint {fn_name}(void) {{\n    /* MockLLM Notice: No reference solution available for problem '{prob_id}' */\n    return 0;\n}}\n```"
+            elif lang == "cpp":
+                return f"```cpp\nclass Solution {{\npublic:\n    int {fn_name}() {{\n        // MockLLM Notice: No reference solution available for problem '{prob_id}'\n        return 0;\n    }}\n}};\n```"
+            else:
+                return f"```java\nclass Solution {{\n    public int {fn_name}() {{\n        // MockLLM Notice: No reference solution available for problem '{prob_id}'\n        return 0;\n    }}\n}}\n```"

@@ -168,6 +168,7 @@ def import_batch_from_file(
             function_name=norm_fn,
             signature=sig_str,
             tests=item["tests"],
+            reference_solution=item.get("reference_solution"),
             db_path=db_path,
         )
 

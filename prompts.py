@@ -16,7 +16,49 @@ def get_system_prompt_for_language(language: str = "python") -> str:
     return SYSTEM_PROMPT
 
 
-def build_initial_prompt(problem: Dict[str, Any]) -> str:
+def normalize_signature(signature_data: Any, language: str = "python") -> str:
+    """Normalize function signature across dicts, JSON strings, and plain strings for the target language."""
+    target_lang = (language or "python").strip().lower()
+    if target_lang in ["cpp", "c++"]:
+        lang_keys = ["cpp", "c++"]
+    elif target_lang in ["c"]:
+        lang_keys = ["c"]
+    elif target_lang in ["java"]:
+        lang_keys = ["java"]
+    else:
+        lang_keys = ["python", "python3"]
+
+    parsed_dict: Optional[Dict[str, Any]] = None
+
+    if isinstance(signature_data, dict):
+        parsed_dict = signature_data
+    elif isinstance(signature_data, str):
+        sig_str = signature_data.strip()
+        if sig_str.startswith("{"):
+            try:
+                loaded = json.loads(sig_str)
+                if isinstance(loaded, dict):
+                    parsed_dict = loaded
+            except Exception:
+                # Malformed JSON signature representation
+                return f"# Signature unavailable (malformed JSON) for {target_lang}"
+
+    if parsed_dict is not None:
+        for k in lang_keys:
+            if k in parsed_dict and parsed_dict[k]:
+                return str(parsed_dict[k]).strip()
+        # If target language not found in dictionary, return first non-empty value or fallback
+        for k, v in parsed_dict.items():
+            if v:
+                return str(v).strip()
+
+    if isinstance(signature_data, str) and signature_data.strip():
+        return signature_data.strip()
+
+    return f"# Signature unavailable for {target_lang}"
+
+
+def build_initial_prompt(problem: Dict[str, Any], language: str = "python") -> str:
     examples = problem.get("tests", [])[:2]
     example_strs = []
     for i, ex in enumerate(examples, 1):
@@ -26,6 +68,12 @@ def build_initial_prompt(problem: Dict[str, Any]) -> str:
         )
     examples_formatted = "\n\n".join(example_strs)
 
+    norm_sig = normalize_signature(problem.get("signature") or problem.get("signatures"), language=language)
+
+    lang_name = (language or "python").strip().capitalize()
+    if lang_name.lower() in ["cpp", "c++"]:
+        lang_name = "C++"
+
     return f"""Problem ID: {problem.get('id')}
 Problem Title: {problem.get('title')}
 Difficulty: {problem.get('difficulty')}
@@ -34,12 +82,12 @@ Description:
 {problem.get('description')}
 
 Function Signature:
-{problem.get('signature')}
+{norm_sig}
 
 Example Tests:
 {examples_formatted}
 
-Please write the complete solution. Provide only the Python code block."""
+Please write the complete solution. Provide only the {lang_name} code block."""
 
 
 def build_retry_prompt(

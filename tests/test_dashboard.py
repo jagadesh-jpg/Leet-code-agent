@@ -125,3 +125,37 @@ def test_official_verdicts_in_dashboard_without_double_count(isolate_db):
     dash3 = get_dashboard_data(db_path=isolate_db)
     assert dash3["summary"]["total_submissions_tracked"] == 2  # Still 2, deduped
 
+
+def test_dashboard_language_progress_and_runs_analytics(isolate_db):
+    """Verify that dashboard includes language-specific breakdown, runs history, and attempts summary."""
+    # 1. Record language progress in python, c, cpp, and java
+    store.mark_result("two-sum", "solved", 1, language="python", db_path=isolate_db)
+    store.mark_result("two-sum", "solved", 2, language="c", db_path=isolate_db)
+    store.mark_result("two-sum", "solved", 1, language="cpp", db_path=isolate_db)
+    store.mark_result("two-sum", "failed", 3, language="java", db_path=isolate_db)
+
+    # 2. Log an attempt
+    store.log_attempt("two-sum", 1, "def two_sum(): pass", "wrong_answer", error="Mismatch", db_path=isolate_db)
+
+    # 3. Create an autonomous run record
+    store.create_autonomous_run("run_test_123", total_problems=2, language="python", db_path=isolate_db)
+    store.update_autonomous_run("run_test_123", {"status": "completed", "verified_count": 2}, db_path=isolate_db)
+
+    dash = get_dashboard_data(db_path=isolate_db)
+
+    # Validate language progress
+    assert "language_progress" in dash
+    assert dash["language_progress"]["python"]["solved"] == 1
+    assert dash["language_progress"]["c"]["solved"] == 1
+    assert dash["language_progress"]["cpp"]["solved"] == 1
+    assert dash["language_progress"]["java"]["failed"] == 1
+
+    # Validate attempts summary
+    assert dash["summary"]["attempts_summary"]["total_attempts"] == 1
+    assert dash["summary"]["attempts_summary"]["by_status"]["wrong_answer"] == 1
+
+    # Validate runs history & status counts
+    assert "autonomous_runs_history" in dash
+    assert len(dash["autonomous_runs_history"]) >= 1
+    assert dash["summary"]["run_status_counts"]["completed"] >= 1
+

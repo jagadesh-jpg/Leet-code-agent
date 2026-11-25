@@ -50,7 +50,7 @@ def build_retry_prompt(
     error_trace: Optional[str] = None,
 ) -> str:
     details_part = ""
-    if failure_details:
+    if failure_details and isinstance(failure_details, dict):
         inp_val = failure_details.get("input", failure_details.get("args"))
         details_part += (
             f"Failing Test Case:\n"
@@ -58,6 +58,8 @@ def build_retry_prompt(
             f"Expected: {json.dumps(failure_details.get('expected'))}\n"
             f"Actual: {json.dumps(failure_details.get('actual'))}\n"
         )
+    elif failure_details:
+        details_part += f"Failure Details: {str(failure_details)}\n"
     if error_trace:
         details_part += f"Error / Traceback:\n{error_trace}\n"
 

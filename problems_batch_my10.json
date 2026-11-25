@@ -1,0 +1,222 @@
+[
+  {
+    "id": "running-sum-1d-array",
+    "title": "Running Sum of 1D Array",
+    "difficulty": "Easy",
+    "url": "https://leetcode.com/problems/running-sum-of-1d-array/",
+    "description": "Compute a cumulative sum array where position i contains the sum of all elements from index 0 up to index i.",
+    "function_name": "runningSum",
+    "signatures": {
+      "python": "def runningSum(self, nums: list[int]) -> list[int]:",
+      "c": "int* runningSum(int* nums, int numsSize, int* returnSize)",
+      "cpp": "vector<int> runningSum(vector<int>& nums)",
+      "java": "public int[] runningSum(int[] nums)"
+    },
+    "reference_solution": "class Solution:\n    def runningSum(self, nums: list) -> list:\n        res = []\n        curr = 0\n        for n in nums:\n            curr += n\n            res.append(curr)\n        return res",
+    "tests": [
+      { "input": [[1, 2, 3, 4]], "expected": [1, 3, 6, 10] },
+      { "input": [[1, 1, 1, 1, 1]], "expected": [1, 2, 3, 4, 5] },
+      { "input": [[3, 1, 2, 10, 1]], "expected": [3, 4, 6, 16, 17] },
+      { "input": [[5]], "expected": [5] },
+      { "input": [[0, 0, 0]], "expected": [0, 0, 0] }
+    ]
+  },
+  {
+    "id": "richest-customer-wealth",
+    "title": "Richest Customer Wealth",
+    "difficulty": "Easy",
+    "url": "https://leetcode.com/problems/richest-customer-wealth/",
+    "description": "Given a grid where row i lists balances for customer i across banks, return the highest wealth belonging to any single customer.",
+    "function_name": "maximumWealth",
+    "signatures": {
+      "python": "def maximumWealth(self, accounts: list[list[int]]) -> int:",
+      "c": "int maximumWealth(int** accounts, int accountsSize, int* accountsColSize)",
+      "cpp": "int maximumWealth(vector<vector<int>>& accounts)",
+      "java": "public int maximumWealth(int[][] accounts)"
+    },
+    "reference_solution": "class Solution:\n    def maximumWealth(self, accounts: list) -> int:\n        return max(sum(row) for row in accounts)",
+    "tests": [
+      { "input": [[[1, 2, 3], [3, 2, 1]]], "expected": 6 },
+      { "input": [[[1, 5], [7, 3], [3, 5]]], "expected": 10 },
+      { "input": [[[2, 8, 7], [7, 1, 3], [1, 9, 5]]], "expected": 17 },
+      { "input": [[[10]]], "expected": 10 },
+      { "input": [[[1, 1], [2, 2], [3, 3]]], "expected": 6 }
+    ]
+  },
+  {
+    "id": "shuffle-the-array",
+    "title": "Shuffle the Array",
+    "difficulty": "Easy",
+    "url": "https://leetcode.com/problems/shuffle-the-array/",
+    "description": "Given an array of 2n numbers arranged as x1..xn, y1..yn, interleave them as [x1, y1, x2, y2, ..., xn, yn].",
+    "function_name": "shuffle",
+    "signatures": {
+      "python": "def shuffle(self, nums: list[int], n: int) -> list[int]:",
+      "c": "int* shuffle(int* nums, int numsSize, int n, int* returnSize)",
+      "cpp": "vector<int> shuffle(vector<int>& nums, int n)",
+      "java": "public int[] shuffle(int[] nums, int n)"
+    },
+    "reference_solution": "class Solution:\n    def shuffle(self, nums: list, n: int) -> list:\n        res = []\n        for i in range(n):\n            res.append(nums[i])\n            res.append(nums[i + n])\n        return res",
+    "tests": [
+      { "input": [[2, 5, 1, 3, 4, 7], 3], "expected": [2, 3, 5, 4, 1, 7] },
+      { "input": [[1, 2, 3, 4, 4, 3, 2, 1], 4], "expected": [1, 4, 2, 3, 3, 2, 4, 1] },
+      { "input": [[1, 1, 2, 2], 2], "expected": [1, 2, 1, 2] },
+      { "input": [[1, 2], 1], "expected": [1, 2] },
+      { "input": [[7, 8, 9, 10], 2], "expected": [7, 9, 8, 10] }
+    ]
+  },
+  {
+    "id": "defanging-ip-address",
+    "title": "Defanging an IP Address",
+    "difficulty": "Easy",
+    "url": "https://leetcode.com/problems/defanging-an-ip-address/",
+    "description": "Given a valid IPv4 address string, return a defanged version where every dot is replaced by [.] brackets.",
+    "function_name": "defangIPaddr",
+    "signatures": {
+      "python": "def defangIPaddr(self, address: str) -> str:",
+      "c": "char* defangIPaddr(char* address)",
+      "cpp": "string defangIPaddr(string address)",
+      "java": "public String defangIPaddr(String address)"
+    },
+    "reference_solution": "class Solution:\n    def defangIPaddr(self, address: str) -> str:\n        return address.replace('.', '[.]')",
+    "tests": [
+      { "input": ["1.1.1.1"], "expected": "1[.]1[.]1[.]1" },
+      { "input": ["255.100.50.0"], "expected": "255[.]100[.]50[.]0" },
+      { "input": ["0.0.0.0"], "expected": "0[.]0[.]0[.]0" },
+      { "input": ["192.168.1.1"], "expected": "192[.]168[.]1[.]1" },
+      { "input": ["10.0.0.1"], "expected": "10[.]0[.]0[.]1" }
+    ]
+  },
+  {
+    "id": "jewels-and-stones",
+    "title": "Jewels and Stones",
+    "difficulty": "Easy",
+    "url": "https://leetcode.com/problems/jewels-and-stones/",
+    "description": "Given characters representing jewel types and a string of stones you have, count how many of your stones are jewels (case-sensitive).",
+    "function_name": "numJewelsInStones",
+    "signatures": {
+      "python": "def numJewelsInStones(self, jewels: str, stones: str) -> int:",
+      "c": "int numJewelsInStones(char* jewels, char* stones)",
+      "cpp": "int numJewelsInStones(string jewels, string stones)",
+      "java": "public int numJewelsInStones(String jewels, String stones)"
+    },
+    "reference_solution": "class Solution:\n    def numJewelsInStones(self, jewels: str, stones: str) -> int:\n        jset = set(jewels)\n        return sum(1 for ch in stones if ch in jset)",
+    "tests": [
+      { "input": ["aA", "aAAbbbb"], "expected": 3 },
+      { "input": ["z", "ZZ"], "expected": 0 },
+      { "input": ["abc", "abcde"], "expected": 3 },
+      { "input": ["X", "X"], "expected": 1 },
+      { "input": ["k", "kkkkk"], "expected": 5 }
+    ]
+  },
+  {
+    "id": "score-of-a-string",
+    "title": "Score of a String",
+    "difficulty": "Easy",
+    "url": "https://leetcode.com/problems/score-of-a-string/",
+    "description": "Calculate the score of a string defined as the sum of absolute differences between ASCII values of adjacent characters.",
+    "function_name": "scoreOfString",
+    "signatures": {
+      "python": "def scoreOfString(self, s: str) -> int:",
+      "c": "int scoreOfString(char* s)",
+      "cpp": "int scoreOfString(string s)",
+      "java": "public int scoreOfString(String s)"
+    },
+    "reference_solution": "class Solution:\n    def scoreOfString(self, s: str) -> int:\n        return sum(abs(ord(s[i]) - ord(s[i + 1])) for i in range(len(s) - 1))",
+    "tests": [
+      { "input": ["hello"], "expected": 13 },
+      { "input": ["zaz"], "expected": 50 },
+      { "input": ["ab"], "expected": 1 },
+      { "input": ["aaa"], "expected": 0 },
+      { "input": ["az"], "expected": 25 }
+    ]
+  },
+  {
+    "id": "unique-number-of-occurrences",
+    "title": "Unique Number of Occurrences",
+    "difficulty": "Easy",
+    "url": "https://leetcode.com/problems/unique-number-of-occurrences/",
+    "description": "Given an integer array, determine if the number of occurrences of each value in the array is distinct.",
+    "function_name": "uniqueOccurrences",
+    "signatures": {
+      "python": "def uniqueOccurrences(self, arr: list[int]) -> bool:",
+      "c": "bool uniqueOccurrences(int* arr, int arrSize)",
+      "cpp": "bool uniqueOccurrences(vector<int>& arr)",
+      "java": "public boolean uniqueOccurrences(int[] arr)"
+    },
+    "reference_solution": "class Solution:\n    def uniqueOccurrences(self, arr: list) -> bool:\n        from collections import Counter\n        counts = list(Counter(arr).values())\n        return len(counts) == len(set(counts))",
+    "tests": [
+      { "input": [[1, 2, 2, 1, 1, 3]], "expected": true },
+      { "input": [[1, 2]], "expected": false },
+      { "input": [[-3, 0, 1, -3, 1, 1, 1, -3, 10, 0]], "expected": true },
+      { "input": [[5]], "expected": true },
+      { "input": [[7, 7, 8, 8]], "expected": false }
+    ]
+  },
+  {
+    "id": "find-the-difference",
+    "title": "Find the Difference",
+    "difficulty": "Easy",
+    "url": "https://leetcode.com/problems/find-the-difference/",
+    "description": "String t is created by shuffling string s and adding one additional letter at a random position. Return the added letter.",
+    "function_name": "findTheDifference",
+    "signatures": {
+      "python": "def findTheDifference(self, s: str, t: str) -> str:",
+      "c": "char findTheDifference(char* s, char* t)",
+      "cpp": "char findTheDifference(string s, string t)",
+      "java": "public char findTheDifference(String s, String t)"
+    },
+    "reference_solution": "class Solution:\n    def findTheDifference(self, s: str, t: str) -> str:\n        from collections import Counter\n        diff = Counter(t) - Counter(s)\n        return list(diff.keys())[0]",
+    "tests": [
+      { "input": ["abcd", "abcde"], "expected": "e" },
+      { "input": ["", "y"], "expected": "y" },
+      { "input": ["a", "aa"], "expected": "a" },
+      { "input": ["ae", "aea"], "expected": "a" },
+      { "input": ["xyz", "zxya"], "expected": "a" }
+    ]
+  },
+  {
+    "id": "move-zeroes",
+    "title": "Move Zeroes",
+    "difficulty": "Easy",
+    "url": "https://leetcode.com/problems/move-zeroes/",
+    "description": "Given an integer array nums, reposition all 0s to the end while keeping the relative order of the non-zero elements unchanged.",
+    "function_name": "moveZeroes",
+    "signatures": {
+      "python": "def moveZeroes(self, nums: list[int]) -> list[int]:",
+      "c": "void moveZeroes(int* nums, int numsSize)",
+      "cpp": "void moveZeroes(vector<int>& nums)",
+      "java": "public void moveZeroes(int[] nums)"
+    },
+    "reference_solution": "class Solution:\n    def moveZeroes(self, nums: list) -> list:\n        insert_pos = 0\n        for num in nums:\n            if num != 0:\n                nums[insert_pos] = num\n                insert_pos += 1\n        while insert_pos < len(nums):\n            nums[insert_pos] = 0\n            insert_pos += 1\n        return nums",
+    "tests": [
+      { "input": [[0, 1, 0, 3, 12]], "expected": [1, 3, 12, 0, 0] },
+      { "input": [[0]], "expected": [0] },
+      { "input": [[1, 2, 3]], "expected": [1, 2, 3] },
+      { "input": [[0, 0, 1]], "expected": [1, 0, 0] },
+      { "input": [[4, 2, 4, 0, 0, 3, 0, 5, 1, 0]], "expected": [4, 2, 4, 3, 5, 1, 0, 0, 0, 0] }
+    ]
+  },
+  {
+    "id": "reverse-vowels-of-a-string",
+    "title": "Reverse Vowels of a String",
+    "difficulty": "Easy",
+    "url": "https://leetcode.com/problems/reverse-vowels-of-a-string/",
+    "description": "Given a string s, reverse only all the vowels (a, e, i, o, u in lowercase or uppercase) in the string and return it.",
+    "function_name": "reverseVowels",
+    "signatures": {
+      "python": "def reverseVowels(self, s: str) -> str:",
+      "c": "char* reverseVowels(char* s)",
+      "cpp": "string reverseVowels(string s)",
+      "java": "public String reverseVowels(String s)"
+    },
+    "reference_solution": "class Solution:\n    def reverseVowels(self, s: str) -> str:\n        chars = list(s)\n        vowels = set('aeiouAEIOU')\n        i, j = 0, len(chars) - 1\n        while i < j:\n            while i < j and chars[i] not in vowels:\n                i += 1\n            while i < j and chars[j] not in vowels:\n                j -= 1\n            if i < j:\n                chars[i], chars[j] = chars[j], chars[i]\n                i += 1\n                j -= 1\n        return ''.join(chars)",
+    "tests": [
+      { "input": ["IceCreAm"], "expected": "AceCreIm" },
+      { "input": ["leetcode"], "expected": "leotcede" },
+      { "input": ["a."], "expected": "a." },
+      { "input": ["bcd"], "expected": "bcd" },
+      { "input": ["aA"], "expected": "Aa" }
+    ]
+  }
+]

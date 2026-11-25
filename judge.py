@@ -23,6 +23,86 @@ import json
 
 __MEMORY_LIMIT_CODE__
 
+# LeetCode ListNode definition for Python
+class ListNode:
+    def __init__(self, val=0, next=None):
+        self.val = val
+        self.next = next
+
+def list_to_linked_list(arr):
+    if not isinstance(arr, list) or not arr:
+        return None
+    head = ListNode(arr[0])
+    curr = head
+    for v in arr[1:]:
+        curr.next = ListNode(v)
+        curr = curr.next
+    return head
+
+def linked_list_to_list(node):
+    res = []
+    visited = set()
+    curr = node
+    while curr is not None:
+        if id(curr) in visited:
+            break
+        visited.add(id(curr))
+        res.append(curr.val)
+        curr = curr.next
+    return res
+
+# LeetCode TreeNode definition for Python
+class TreeNode:
+    def __init__(self, val=0, left=None, right=None):
+        self.val = val
+        self.left = left
+        self.right = right
+
+def list_to_tree(arr):
+    if not isinstance(arr, list) or not arr or arr[0] is None:
+        return None
+    root = TreeNode(arr[0])
+    queue = [root]
+    i = 1
+    n = len(arr)
+    while queue and i < n:
+        curr = queue.pop(0)
+        if curr is None:
+            continue
+        # Left child
+        if i < n:
+            val = arr[i]
+            i += 1
+            if val is not None:
+                curr.left = TreeNode(val)
+                queue.append(curr.left)
+        # Right child
+        if i < n:
+            val = arr[i]
+            i += 1
+            if val is not None:
+                curr.right = TreeNode(val)
+                queue.append(curr.right)
+    return root
+
+def tree_to_list(root):
+    if not root:
+        return []
+    res = []
+    queue = [root]
+    while queue:
+        curr = queue.pop(0)
+        if curr:
+            res.append(curr.val)
+            queue.append(curr.left)
+            queue.append(curr.right)
+        else:
+            res.append(None)
+    # Trim trailing Nones
+    while res and res[-1] is None:
+        res.pop()
+    return res
+
 # Candidate code
 __CANDIDATE_CODE__
 
@@ -69,6 +149,11 @@ def main():
 
     tests = problem["tests"]
     compare_mode = problem.get("compare", "exact")
+    sig_low = problem.get("signature", "").lower()
+    pid_low = problem.get("id", "").lower()
+    ptype_low = problem.get("type", "").lower()
+    is_linked_list = ptype_low == "linked_list" or "reverselist" in fn_name.lower() or "reverse-linked-list" in pid_low or "listnode" in sig_low
+    is_tree = ptype_low == "tree" or "treenode" in sig_low or "maxdepth" in fn_name.lower() or "tree" in pid_low
     passed_count = 0
 
     for idx, test in enumerate(tests):
@@ -83,10 +168,35 @@ def main():
         expected = test.get("expected")
 
         try:
-            if isinstance(inp_args, list):
-                actual = fn(*inp_args)
+            if is_linked_list:
+                # If problem is linked list, convert input array(s) to ListNode
+                if isinstance(inp_args, list) and len(inp_args) == 1 and isinstance(inp_args[0], list):
+                    head = list_to_linked_list(inp_args[0])
+                    actual_node = fn(head)
+                elif isinstance(inp_args, list) and all(not isinstance(x, list) for x in inp_args):
+                    head = list_to_linked_list(inp_args)
+                    actual_node = fn(head)
+                else:
+                    head = list_to_linked_list(inp_args[0] if isinstance(inp_args, list) and inp_args else inp_args)
+                    actual_node = fn(head)
+                actual = linked_list_to_list(actual_node) if isinstance(actual_node, ListNode) or actual_node is None else actual_node
+            elif is_tree:
+                # If problem is tree, convert input array to TreeNode
+                if isinstance(inp_args, list) and len(inp_args) == 1 and isinstance(inp_args[0], list):
+                    root = list_to_tree(inp_args[0])
+                    actual_res = fn(root)
+                elif isinstance(inp_args, list) and (not inp_args or any(x is None or isinstance(x, (int, str)) for x in inp_args)):
+                    root = list_to_tree(inp_args)
+                    actual_res = fn(root)
+                else:
+                    root = list_to_tree(inp_args[0] if isinstance(inp_args, list) and inp_args else inp_args)
+                    actual_res = fn(root)
+                actual = tree_to_list(actual_res) if isinstance(actual_res, TreeNode) else actual_res
             else:
-                actual = fn(inp_args)
+                if isinstance(inp_args, list):
+                    actual = fn(*inp_args)
+                else:
+                    actual = fn(inp_args)
         except Exception as e:
             import traceback
             tb = traceback.format_exc()

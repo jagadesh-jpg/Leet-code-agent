@@ -36,9 +36,18 @@ def main():
     parser.add_argument("--limit", type=int, default=None, help="Maximum number of problems to process (legacy single run)")
     parser.add_argument("--budget", type=int, default=100, help="Maximum API request budget (default: 100)")
     parser.add_argument("--mock", action="store_true", help="Use MockLLM instead of real LLM API")
+    parser.add_argument("--demo", action="store_true", help="Run offline 4-language autonomous solver demonstration")
+    parser.add_argument("--list-problems", action="store_true", help="List all available problems with solved status")
+    parser.add_argument("--dashboard", action="store_true", help="Display full progress analytics and run dashboard")
     parser.add_argument("--reset", action="store_true", help="Reset saved progress database before starting")
 
     args = parser.parse_args()
+
+    # Fast path for offline demonstration
+    if args.demo:
+        import demo_mock
+        demo_mock.run_demo()
+        return
 
     # 1. Initialize SQLite database
     store.init()
@@ -46,6 +55,39 @@ def main():
     if args.reset:
         store.reset()
         print("Progress database reset successfully.")
+
+    if args.dashboard:
+        import dashboard
+        dash = dashboard.get_dashboard_data()
+        print("\n" + "=" * 60)
+        print("  LEETCODE AGENT DASHBOARD")
+        print("=" * 60)
+        print(f"Profile: {dash['profile_url']}")
+        print(f"Submissions Tracked: {dash['summary']['total_submissions_tracked']}")
+        print(f"Unique Problems Solved: {dash['summary']['unique_problems_solved']}")
+        print(f"Difficulty Breakdown: {dash['summary']['by_difficulty_solved']}")
+        print("\nLanguage Progress Breakdown:")
+        for lang, stats in dash["language_progress"].items():
+            print(f"  {lang.upper():<6}: {stats.get('solved', 0)} solved, {stats.get('failed', 0)} failed")
+        print(f"\nAttempts Summary: {dash['summary']['attempts_summary']}")
+        print(f"Latest Worker Status: {dash['autonomous_worker']['status']} (Problem: {dash['autonomous_worker']['current_problem'] or 'None'})")
+        print("=" * 60 + "\n")
+        return
+
+    if args.list_problems:
+        all_p = load_problems()
+        custom_p = store.list_custom_problems()
+        print("\n" + "=" * 70)
+        print(f"{'ID':<30} {'DIFFICULTY':<12} {'TYPE':<12} {'STATUS'}")
+        print("=" * 70)
+        for p in all_p:
+            s = "SOLVED" if store.is_solved(p["id"]) else "PENDING"
+            print(f"{p['id']:<30} {p.get('difficulty',''):<12} {'Curated':<12} {s}")
+        for cp in custom_p:
+            s = "SOLVED" if store.is_solved(cp["id"]) else "PENDING"
+            print(f"{cp['id']:<30} {cp.get('difficulty',''):<12} {'Imported':<12} {s}")
+        print("=" * 70 + "\n")
+        return
 
     # 2. Autonomous batch solver mode
     if args.autonomous:

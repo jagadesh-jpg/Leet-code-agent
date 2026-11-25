@@ -1,7 +1,32 @@
+# Environment and credentials (ensure .env.example remains trackable)
 .env
+.env*.local
+!.env.example
+
+# Virtual environments
 .venv/
+env/
+venv/
+
+# Python caches and byte-compiled files
 __pycache__/
 *.py[cod]
+*$py.class
 .pytest_cache/
+
+# Databases and local state
+*.db
+*.sqlite3
 progress.db
+
+# Developer diagnostic scratch files
+scratch_diag_single_call.py
+
+# Compiled executables and binary build artifacts
+*.exe
+*.o
+*.obj
+*.class
+
+# IDE and agent metadata
 .agents/

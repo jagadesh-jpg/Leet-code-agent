@@ -113,13 +113,22 @@ class CLanguageAdapter(BaseLanguageAdapter):
             else:  # cl.exe (MSVC)
                 compile_cmd = [compiler, "/Fe:" + exe_file, "solution.c"]
 
-            comp_res = subprocess.run(
-                compile_cmd,
-                cwd=tmpdir,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
+            try:
+                comp_res = subprocess.run(
+                    compile_cmd,
+                    cwd=tmpdir,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                )
+            except subprocess.TimeoutExpired:
+                return {
+                    "status": "timeout",
+                    "passed_count": 0,
+                    "total": total_tests,
+                    "failure": None,
+                    "error": f"C compilation timed out after {timeout} seconds.",
+                }
 
             if comp_res.returncode != 0:
                 return {
@@ -130,13 +139,22 @@ class CLanguageAdapter(BaseLanguageAdapter):
                     "error": (comp_res.stderr or comp_res.stdout or "Compilation failed")[:1500],
                 }
 
-            run_res = subprocess.run(
-                [exe_file],
-                cwd=tmpdir,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
+            try:
+                run_res = subprocess.run(
+                    [exe_file],
+                    cwd=tmpdir,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                )
+            except subprocess.TimeoutExpired:
+                return {
+                    "status": "timeout",
+                    "passed_count": 0,
+                    "total": total_tests,
+                    "failure": None,
+                    "error": f"C execution timed out after {timeout} seconds.",
+                }
             if run_res.returncode != 0:
                 return {
                     "status": "runtime_error",
@@ -212,13 +230,22 @@ class CppLanguageAdapter(BaseLanguageAdapter):
             else:  # cl.exe (MSVC)
                 compile_cmd = [compiler, "/std:c++17", "/Fe:" + exe_file, "solution.cpp"]
 
-            comp_res = subprocess.run(
-                compile_cmd,
-                cwd=tmpdir,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
+            try:
+                comp_res = subprocess.run(
+                    compile_cmd,
+                    cwd=tmpdir,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                )
+            except subprocess.TimeoutExpired:
+                return {
+                    "status": "timeout",
+                    "passed_count": 0,
+                    "total": total_tests,
+                    "failure": None,
+                    "error": f"C compilation timed out after {timeout} seconds.",
+                }
 
             if comp_res.returncode != 0:
                 return {
@@ -229,13 +256,22 @@ class CppLanguageAdapter(BaseLanguageAdapter):
                     "error": (comp_res.stderr or comp_res.stdout or "Compilation failed")[:1500],
                 }
 
-            run_res = subprocess.run(
-                [exe_file],
-                cwd=tmpdir,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
+            try:
+                run_res = subprocess.run(
+                    [exe_file],
+                    cwd=tmpdir,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                )
+            except subprocess.TimeoutExpired:
+                return {
+                    "status": "timeout",
+                    "passed_count": 0,
+                    "total": total_tests,
+                    "failure": None,
+                    "error": f"C execution timed out after {timeout} seconds.",
+                }
             if run_res.returncode != 0:
                 return {
                     "status": "runtime_error",
@@ -311,13 +347,23 @@ class JavaLanguageAdapter(BaseLanguageAdapter):
 
             # Compile
             javac_cmd = [javac, "Solution.java"]
-            comp_res = subprocess.run(
-                javac_cmd,
-                cwd=tmpdir,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
+            try:
+                comp_res = subprocess.run(
+                    javac_cmd,
+                    cwd=tmpdir,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                )
+            except subprocess.TimeoutExpired:
+                return {
+                    "status": "timeout",
+                    "passed_count": 0,
+                    "total": total_tests,
+                    "failure": None,
+                    "error": f"Java compilation timed out after {timeout} seconds.",
+                }
+
             if comp_res.returncode != 0:
                 return {
                     "status": "compile_error",
@@ -329,13 +375,22 @@ class JavaLanguageAdapter(BaseLanguageAdapter):
 
             # Execute test harness
             run_cmd = [java, "-cp", ".", runner_class]
-            run_res = subprocess.run(
-                run_cmd,
-                cwd=tmpdir,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
+            try:
+                run_res = subprocess.run(
+                    run_cmd,
+                    cwd=tmpdir,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                )
+            except subprocess.TimeoutExpired:
+                return {
+                    "status": "timeout",
+                    "passed_count": 0,
+                    "total": total_tests,
+                    "failure": None,
+                    "error": f"Java execution timed out after {timeout} seconds.",
+                }
             if run_res.returncode != 0:
                 return {
                     "status": "runtime_error",

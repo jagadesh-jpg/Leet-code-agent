@@ -319,6 +319,7 @@ def start_autonomous_run(
     difficulty: str = "",
     language: str = "python",
     budget: int = 100,
+    problem_ids: list[str] = None,
 ) -> dict:
     """Start autonomous batch problem solving across pending custom and curated LeetCode problems."""
     db_path = _get_active_db_path()
@@ -331,6 +332,7 @@ def start_autonomous_run(
         api_request_budget=budget,
         db_path=db_path,
         run_in_background=True,
+        problem_ids=problem_ids,
     )
     return res
 

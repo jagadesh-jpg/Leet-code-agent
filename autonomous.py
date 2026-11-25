@@ -33,12 +33,25 @@ def get_pending_queue(
     max_problems: int = 5,
     skip_locally_verified: bool = True,
     language: str = "python",
+    problem_ids: Optional[List[str]] = None,
     db_path: Optional[str | Path] = None,
 ) -> List[Dict[str, Any]]:
     """Assemble pending eligible problems from custom imported and curated datasets."""
     store.init(db_path=db_path)
     custom_list = store.list_custom_problems(db_path=db_path)
     built_in = load_problems()
+
+    # If explicit problem_ids passed, select only those problems in specified order
+    if problem_ids:
+        explicit_candidates = []
+        for pid in problem_ids:
+            prob = store.get_custom_problem(pid, db_path=db_path)
+            if not prob:
+                prob = next((b for b in built_in if b["id"] == pid), None)
+            if prob:
+                if not (skip_locally_verified and store.is_solved(pid, language=language, db_path=db_path)):
+                    explicit_candidates.append(prob)
+        return explicit_candidates[:max_problems]
 
     # Map all candidates
     candidates = []
@@ -88,6 +101,7 @@ def run_autonomous_queue(
     llm_client: Any = None,
     db_path: Optional[str | Path] = None,
     run_id: Optional[str] = None,
+    problem_ids: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Autonomous batch worker executing solve-test-fix loop sequentially."""
     global _CURRENT_RUN_ID, _PAUSE_REQUESTED, _STOP_REQUESTED
@@ -104,20 +118,24 @@ def run_autonomous_queue(
             skip_locally_verified=True,
             language=language,
             db_path=db_path,
+            problem_ids=problem_ids,
         )
-        problem_ids = [p["id"] for p in pending]
+        selected_problem_ids = [p["id"] for p in pending]
         run_data = store.create_autonomous_run(
             run_id=run_id,
-            total_problems=len(problem_ids),
+            total_problems=len(selected_problem_ids),
             difficulty_filter=difficulty,
             max_attempts=max_attempts_per_problem,
+            language=language,
             db_path=db_path,
         )
-        store.save_autonomous_queue(run_id, problem_ids, db_path=db_path)
+        store.save_autonomous_queue(run_id, selected_problem_ids, db_path=db_path)
     else:
         run_data = store.get_autonomous_run(run_id, db_path=db_path)
         if not run_data:
             return {"error": f"Run '{run_id}' not found."}
+        if "language" in run_data and run_data["language"]:
+            language = run_data["language"]
 
     _CURRENT_RUN_ID = run_id
     _PAUSE_REQUESTED.clear()
@@ -256,6 +274,53 @@ def run_autonomous_queue(
             if api_delay_seconds > 0:
                 time.sleep(api_delay_seconds)
 
+        except LLMError as e:
+            api_errors += 1
+            # Check if quota or rate limit is exhausted
+            is_quota_failure = (e.error_type in ["daily_quota_exhausted", "billing_limit", "rpm_limit", "tpm_limit", "transient_rate_limit"]) or ("429" in str(e))
+            if is_quota_failure:
+                diag_msg = getattr(e, "diagnostic_summary", None) or str(e)
+                # Pause autonomous run gracefully without marking the problem failed or verified
+                store.update_autonomous_queue_item(
+                    run_id=run_id,
+                    problem_id=pid,
+                    status="queued",
+                    error=f"API Quota/Rate Limit: {diag_msg}",
+                    db_path=db_path,
+                )
+                store.update_autonomous_run(
+                    run_id,
+                    {
+                        "status": "paused",
+                        "current_problem_id": pid,
+                        "api_errors_count": api_errors,
+                        "error_message": f"Paused due to Gemini API rate/quota limit: {diag_msg}",
+                    },
+                    db_path=db_path,
+                )
+                break
+            else:
+                completed_count += 1
+                failed_count += 1
+                remaining = total - completed_count
+                store.update_autonomous_queue_item(
+                    run_id=run_id,
+                    problem_id=pid,
+                    status="failed",
+                    error=str(e),
+                    db_path=db_path,
+                )
+                store.update_autonomous_run(
+                    run_id,
+                    {
+                        "completed_count": completed_count,
+                        "remaining_count": max(0, remaining),
+                        "failed_count": failed_count,
+                        "api_errors_count": api_errors,
+                        "error_message": f"Error solving {pid}: {e}",
+                    },
+                    db_path=db_path,
+                )
         except Exception as e:
             api_errors += 1
             completed_count += 1
@@ -310,6 +375,7 @@ def start_autonomous_run(
     llm_client: Any = None,
     db_path: Optional[str | Path] = None,
     run_in_background: bool = True,
+    problem_ids: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     global _ACTIVE_WORKER_THREAD, _CURRENT_RUN_ID
 
@@ -338,6 +404,7 @@ def start_autonomous_run(
                     api_delay_seconds=api_delay_seconds,
                     llm_client=llm_client,
                     db_path=db_path,
+                    problem_ids=problem_ids,
                 )
             finally:
                 pass
@@ -364,6 +431,7 @@ def start_autonomous_run(
                 api_delay_seconds=api_delay_seconds,
                 llm_client=llm_client,
                 db_path=db_path,
+                problem_ids=problem_ids,
             )
 
 
@@ -450,6 +518,14 @@ def resume_autonomous_run(
             return {"error": "No recorded run found to resume."}
 
         target_id = target["run_id"]
+        current_status = target.get("status")
+        if current_status in ["completed", "stopped"]:
+            return {
+                "error": f"Cannot resume run '{target_id}' because it is already marked '{current_status}'.",
+                "run_id": target_id,
+                "status": current_status,
+            }
+
         # Allow resuming if status is paused, interrupted, or running (e.g. recovering process restart)
         _PAUSE_REQUESTED.clear()
         _STOP_REQUESTED.clear()

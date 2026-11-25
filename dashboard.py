@@ -278,7 +278,21 @@ def get_dashboard_data(
         "failed_count": latest_run.get("failed_count", 0) if latest_run else 0,
         "api_errors": latest_run.get("api_errors_count", 0) if latest_run else 0,
         "estimated_api_usage": latest_run.get("api_calls_count", 0) if latest_run else 0,
+        "last_error": latest_run.get("error_message", "") if latest_run else "",
     }
+
+    # Language progress breakdown
+    lang_progress = store.get_language_progress_summary(db_path=db_path)
+
+    # Run history & status counts
+    all_runs = store.list_autonomous_runs(db_path=db_path, limit=20)
+    run_status_counts: Dict[str, int] = {}
+    for r in all_runs:
+        s = r.get("status", "unknown")
+        run_status_counts[s] = run_status_counts.get(s, 0) + 1
+
+    # Attempt statistics
+    attempts_summary = store.get_all_attempts_summary(db_path=db_path)
 
     return {
         "username": username,
@@ -289,8 +303,13 @@ def get_dashboard_data(
             "unique_problems_attempted": len(problem_verdicts),
             "by_difficulty_solved": difficulty_solved,
             "verdicts_breakdown": verdict_counts,
+            "language_progress": lang_progress,
+            "attempts_summary": attempts_summary,
+            "run_status_counts": run_status_counts,
         },
+        "language_progress": lang_progress,
         "autonomous_worker": autonomous_stats,
+        "autonomous_runs_history": all_runs[:10],
         "attempted_not_accepted": attempted_not_accepted,
         "recommendations": recommendations[:6],
         "recent_submissions": unified_submissions[:10],

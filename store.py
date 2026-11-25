@@ -126,6 +126,7 @@ def init(db_path: Optional[str | Path] = None) -> None:
                 api_errors_count INTEGER DEFAULT 0,
                 difficulty_filter TEXT,
                 max_attempts INTEGER DEFAULT 5,
+                language TEXT DEFAULT 'python',
                 started_at TEXT,
                 updated_at TEXT,
                 error_message TEXT
@@ -609,20 +610,30 @@ def create_autonomous_run(
     total_problems: int,
     difficulty_filter: Optional[str] = None,
     max_attempts: int = 5,
+    language: str = "python",
     db_path: Optional[str | Path] = None,
 ) -> Dict[str, Any]:
     now = datetime.now(timezone.utc).isoformat()
     with get_connection(db_path) as conn:
         cursor = conn.cursor()
+        # Ensure language column exists for older schemas
+        cursor.execute("PRAGMA table_info(autonomous_runs)")
+        cols = [c[1] for c in cursor.fetchall()]
+        if "language" not in cols:
+            try:
+                cursor.execute("ALTER TABLE autonomous_runs ADD COLUMN language TEXT DEFAULT 'python'")
+            except Exception:
+                pass
+
         cursor.execute(
             """
             INSERT INTO autonomous_runs (
                 run_id, status, current_problem_id, current_attempt, completed_count,
                 remaining_count, total_problems, verified_count, failed_count,
-                api_calls_count, api_errors_count, difficulty_filter, max_attempts,
+                api_calls_count, api_errors_count, difficulty_filter, max_attempts, language,
                 started_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 run_id,
@@ -638,6 +649,7 @@ def create_autonomous_run(
                 0,
                 difficulty_filter or "all",
                 max_attempts,
+                language or "python",
                 now,
                 now,
             ),
@@ -736,4 +748,53 @@ def update_autonomous_queue_item(
             (status, attempts_used, result_status, error, now, run_id, problem_id),
         )
         conn.commit()
+
+
+def get_language_progress_summary(db_path: Optional[str | Path] = None) -> Dict[str, Dict[str, int]]:
+    """Return count of solved and failed problems by programming language."""
+    init(db_path)
+    res: Dict[str, Dict[str, int]] = {}
+    with get_connection(db_path) as conn:
+        rows = conn.execute(
+            "SELECT language, status, COUNT(*) as cnt FROM language_progress GROUP BY language, status"
+        ).fetchall()
+        for r in rows:
+            lang = r["language"]
+            status = r["status"]
+            cnt = r["cnt"]
+            if lang not in res:
+                res[lang] = {"solved": 0, "failed": 0, "total": 0}
+            res[lang][status] = cnt
+            res[lang]["total"] = res[lang].get("total", 0) + cnt
+    return res
+
+
+def list_autonomous_runs(db_path: Optional[str | Path] = None, limit: int = 50) -> List[Dict[str, Any]]:
+    """List recent autonomous runs with their parameters and status."""
+    init(db_path)
+    with get_connection(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM autonomous_runs
+            ORDER BY started_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_all_attempts_summary(db_path: Optional[str | Path] = None) -> Dict[str, Any]:
+    """Return total attempts count and verdict breakdowns."""
+    init(db_path)
+    with get_connection(db_path) as conn:
+        total_attempts = conn.execute("SELECT COUNT(*) FROM attempts").fetchone()[0]
+        status_rows = conn.execute(
+            "SELECT status, COUNT(*) FROM attempts GROUP BY status"
+        ).fetchall()
+        status_breakdown = {r[0]: r[1] for r in status_rows}
+        return {
+            "total_attempts": total_attempts,
+            "by_status": status_breakdown,
+        }
 

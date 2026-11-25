@@ -1,0 +1,68 @@
+[
+  {
+    "id": "palindrome-number",
+    "title": "Palindrome Number",
+    "difficulty": "Easy",
+    "url": "https://leetcode.com/problems/palindrome-number/",
+    "description": "Given an integer x, return true if x is a palindrome, and false otherwise.",
+    "function_name": "isPalindrome",
+    "signatures": {
+      "python": "def isPalindrome(self, x: int) -> bool:",
+      "c": "bool isPalindrome(int x)",
+      "cpp": "bool isPalindrome(int x)",
+      "java": "public boolean isPalindrome(int x)"
+    },
+    "reference_solution": "class Solution:\n    def isPalindrome(self, x: int) -> bool:\n        if x < 0:\n            return False\n        s = str(x)\n        return s == s[::-1]",
+    "tests": [
+      { "input": [121], "expected": true },
+      { "input": [-121], "expected": false },
+      { "input": [10], "expected": false },
+      { "input": [0], "expected": true },
+      { "input": [1221], "expected": true }
+    ]
+  },
+  {
+    "id": "single-number",
+    "title": "Single Number",
+    "difficulty": "Easy",
+    "url": "https://leetcode.com/problems/single-number/",
+    "description": "Given a non-empty array of integers nums, every element appears twice except for one. Find that single one.",
+    "function_name": "singleNumber",
+    "signatures": {
+      "python": "def singleNumber(self, nums: List[int]) -> int:",
+      "c": "int singleNumber(int* nums, int numsSize)",
+      "cpp": "int singleNumber(vector<int>& nums)",
+      "java": "public int singleNumber(int[] nums)"
+    },
+    "reference_solution": "class Solution:\n    def singleNumber(self, nums: List[int]) -> int:\n        res = 0\n        for n in nums:\n            res ^= n\n        return res",
+    "tests": [
+      { "input": [[2, 2, 1]], "expected": 1 },
+      { "input": [[4, 1, 2, 1, 2]], "expected": 4 },
+      { "input": [[1]], "expected": 1 },
+      { "input": [[7, 3, 7]], "expected": 3 },
+      { "input": [[9, 9, 8, 8, 5]], "expected": 5 }
+    ]
+  },
+  {
+    "id": "maximum-depth-of-binary-tree",
+    "title": "Maximum Depth of Binary Tree",
+    "difficulty": "Easy",
+    "type": "tree",
+    "url": "https://leetcode.com/problems/maximum-depth-of-binary-tree/",
+    "description": "Given the root of a binary tree, return its maximum depth.",
+    "function_name": "maxDepth",
+    "signatures": {
+      "python": "def maxDepth(self, root: Optional[TreeNode]) -> int:",
+      "c": "int maxDepth(struct TreeNode* root)",
+      "cpp": "int maxDepth(TreeNode* root)",
+      "java": "public int maxDepth(TreeNode root)"
+    },
+    "reference_solution": "class Solution:\n    def maxDepth(self, root: Optional[TreeNode]) -> int:\n        if not root:\n            return 0\n        return 1 + max(self.maxDepth(root.left), self.maxDepth(root.right))",
+    "tests": [
+      { "input": [[3, 9, 20, null, null, 15, 7]], "expected": 3 },
+      { "input": [[1, null, 2]], "expected": 2 },
+      { "input": [[]], "expected": 0 },
+      { "input": [[0]], "expected": 1 }
+    ]
+  }
+]

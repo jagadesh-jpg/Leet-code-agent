@@ -1,0 +1,232 @@
+[
+  {
+    "id": "product-of-array-except-self",
+    "title": "Product of Array Except Self",
+    "difficulty": "Medium",
+    "url": "https://leetcode.com/problems/product-of-array-except-self/",
+    "description": "Given an integer array nums, return an array answer such that answer[i] is equal to the product of all elements of nums except nums[i], computed without division.",
+    "function_name": "productExceptSelf",
+    "signatures": {
+      "python": "def productExceptSelf(self, nums: list[int]) -> list[int]:",
+      "c": "int* productExceptSelf(int* nums, int numsSize, int* returnSize)",
+      "cpp": "vector<int> productExceptSelf(vector<int>& nums)",
+      "java": "public int[] productExceptSelf(int[] nums)"
+    },
+    "reference_solution": "class Solution:\n    def productExceptSelf(self, nums: list) -> list:\n        n = len(nums)\n        res = [1] * n\n        prefix = 1\n        for i in range(n):\n            res[i] = prefix\n            prefix *= nums[i]\n        suffix = 1\n        for i in range(n - 1, -1, -1):\n            res[i] *= suffix\n            suffix *= nums[i]\n        return res",
+    "tests": [
+      { "input": [[1, 2, 3, 4]], "expected": [24, 12, 8, 6] },
+      { "input": [[-1, 1, 0, -3, 3]], "expected": [0, 0, 9, 0, 0] },
+      { "input": [[0, 0]], "expected": [0, 0] },
+      { "input": [[5, 2]], "expected": [2, 5] },
+      { "input": [[1, -1]], "expected": [-1, 1] },
+      { "input": [[10, 0, 5]], "expected": [0, 50, 0] }
+    ]
+  },
+  {
+    "id": "maximum-subarray",
+    "title": "Maximum Subarray",
+    "difficulty": "Medium",
+    "url": "https://leetcode.com/problems/maximum-subarray/",
+    "description": "Find the contiguous subarray within an integer array nums that has the largest sum, and return that maximum sum.",
+    "function_name": "maxSubArray",
+    "signatures": {
+      "python": "def maxSubArray(self, nums: list[int]) -> int:",
+      "c": "int maxSubArray(int* nums, int numsSize)",
+      "cpp": "int maxSubArray(vector<int>& nums)",
+      "java": "public int maxSubArray(int[] nums)"
+    },
+    "reference_solution": "class Solution:\n    def maxSubArray(self, nums: list) -> int:\n        max_sum = nums[0]\n        cur = nums[0]\n        for x in nums[1:]:\n            cur = max(x, cur + x)\n            max_sum = max(max_sum, cur)\n        return max_sum",
+    "tests": [
+      { "input": [[-2, 1, -3, 4, -1, 2, 1, -5, 4]], "expected": 6 },
+      { "input": [[1]], "expected": 1 },
+      { "input": [[5, 4, -1, 7, 8]], "expected": 23 },
+      { "input": [[-1]], "expected": -1 },
+      { "input": [[-2, -1]], "expected": -1 },
+      { "input": [[-3, -2, 0, -1]], "expected": 0 }
+    ]
+  },
+  {
+    "id": "longest-palindromic-substring",
+    "title": "Longest Palindromic Substring",
+    "difficulty": "Medium",
+    "url": "https://leetcode.com/problems/longest-palindromic-substring/",
+    "description": "Given a string s, return the longest palindromic substring in s.",
+    "function_name": "longestPalindrome",
+    "signatures": {
+      "python": "def longestPalindrome(self, s: str) -> str:",
+      "c": "char* longestPalindrome(char* s)",
+      "cpp": "string longestPalindrome(string s)",
+      "java": "public String longestPalindrome(String s)"
+    },
+    "reference_solution": "class Solution:\n    def longestPalindrome(self, s: str) -> str:\n        if not s:\n            return ''\n        start, max_len = 0, 1\n        for i in range(len(s)):\n            # odd palindrome\n            l, r = i, i\n            while l >= 0 and r < len(s) and s[l] == s[r]:\n                if r - l + 1 > max_len:\n                    start = l\n                    max_len = r - l + 1\n                l -= 1\n                r += 1\n            # even palindrome\n            l, r = i, i + 1\n            while l >= 0 and r < len(s) and s[l] == s[r]:\n                if r - l + 1 > max_len:\n                    start = l\n                    max_len = r - l + 1\n                l -= 1\n                r += 1\n        return s[start:start + max_len]",
+    "tests": [
+      { "input": ["babad"], "expected": "bab" },
+      { "input": ["cbbd"], "expected": "bb" },
+      { "input": ["a"], "expected": "a" },
+      { "input": ["ac"], "expected": "a" },
+      { "input": ["bb"], "expected": "bb" },
+      { "input": ["racecar"], "expected": "racecar" }
+    ]
+  },
+  {
+    "id": "string-to-integer-atoi",
+    "title": "String to Integer (atoi)",
+    "difficulty": "Medium",
+    "url": "https://leetcode.com/problems/string-to-integer-atoi/",
+    "description": "Converts a string to a 32-bit signed integer by discarding initial whitespace, checking for an optional sign, and clamping values to [-2^31, 2^31 - 1].",
+    "function_name": "myAtoi",
+    "signatures": {
+      "python": "def myAtoi(self, s: str) -> int:",
+      "c": "int myAtoi(char* s)",
+      "cpp": "int myAtoi(string s)",
+      "java": "public int myAtoi(String s)"
+    },
+    "reference_solution": "class Solution:\n    def myAtoi(self, s: str) -> int:\n        s = s.lstrip()\n        if not s:\n            return 0\n        sign = 1\n        idx = 0\n        if s[0] == '-':\n            sign = -1\n            idx = 1\n        elif s[0] == '+':\n            idx = 1\n        res = 0\n        while idx < len(s) and s[idx].isdigit():\n            res = res * 10 + int(s[idx])\n            idx += 1\n        res = sign * res\n        INT_MIN, INT_MAX = -2**31, 2**31 - 1\n        if res < INT_MIN:\n            return INT_MIN\n        if res > INT_MAX:\n            return INT_MAX\n        return res",
+    "tests": [
+      { "input": ["42"], "expected": 42 },
+      { "input": ["   -42"], "expected": -42 },
+      { "input": ["4193 with words"], "expected": 4193 },
+      { "input": [""], "expected": 0 },
+      { "input": ["-91283472332"], "expected": -2147483648 },
+      { "input": ["words and 987"], "expected": 0 }
+    ]
+  },
+  {
+    "id": "top-k-frequent-elements",
+    "title": "Top K Frequent Elements",
+    "difficulty": "Medium",
+    "url": "https://leetcode.com/problems/top-k-frequent-elements/",
+    "description": "Given an integer array nums and an integer k, return the k most frequent elements in descending order of frequency.",
+    "function_name": "topKFrequent",
+    "signatures": {
+      "python": "def topKFrequent(self, nums: list[int], k: int) -> list[int]:",
+      "c": "int* topKFrequent(int* nums, int numsSize, int k, int* returnSize)",
+      "cpp": "vector<int> topKFrequent(vector<int>& nums, int k)",
+      "java": "public int[] topKFrequent(int[] nums, int k)"
+    },
+    "reference_solution": "class Solution:\n    def topKFrequent(self, nums: list, k: int) -> list:\n        from collections import Counter\n        counts = Counter(nums)\n        return [item[0] for item in counts.most_common(k)]",
+    "tests": [
+      { "input": [[1, 1, 1, 2, 2, 3], 2], "expected": [1, 2] },
+      { "input": [[1], 1], "expected": [1] },
+      { "input": [[4, 4, 4, 2, 2, 1], 1], "expected": [4] },
+      { "input": [[-1, -1, 2], 1], "expected": [-1] },
+      { "input": [[3, 3, 3, 2, 2, 1, 1, 1], 2], "expected": [3, 1] },
+      { "input": [[5, 6, 7], 3], "expected": [5, 6, 7] }
+    ]
+  },
+  {
+    "id": "subarray-sum-equals-k",
+    "title": "Subarray Sum Equals K",
+    "difficulty": "Medium",
+    "url": "https://leetcode.com/problems/subarray-sum-equals-k/",
+    "description": "Given an array of integers nums and an integer k, return the total count of contiguous subarrays whose elements sum up to k.",
+    "function_name": "subarraySum",
+    "signatures": {
+      "python": "def subarraySum(self, nums: list[int], k: int) -> int:",
+      "c": "int subarraySum(int* nums, int numsSize, int k)",
+      "cpp": "int subarraySum(vector<int>& nums, int k)",
+      "java": "public int subarraySum(int[] nums, int k)"
+    },
+    "reference_solution": "class Solution:\n    def subarraySum(self, nums: list, k: int) -> int:\n        count = 0\n        cur = 0\n        prefix_sums = {0: 1}\n        for x in nums:\n            cur += x\n            if cur - k in prefix_sums:\n                count += prefix_sums[cur - k]\n            prefix_sums[cur] = prefix_sums.get(cur, 0) + 1\n        return count",
+    "tests": [
+      { "input": [[1, 1, 1], 2], "expected": 2 },
+      { "input": [[1, 2, 3], 3], "expected": 2 },
+      { "input": [[1], 0], "expected": 0 },
+      { "input": [[1], 1], "expected": 1 },
+      { "input": [[1, -1, 0], 0], "expected": 3 },
+      { "input": [[0, 0, 0], 0], "expected": 6 }
+    ]
+  },
+  {
+    "id": "two-sum-ii-input-array-is-sorted",
+    "title": "Two Sum II - Input Array Is Sorted",
+    "difficulty": "Medium",
+    "url": "https://leetcode.com/problems/two-sum-ii-input-array-is-sorted/",
+    "description": "Given a 1-indexed sorted integer array numbers, find two numbers that sum up to target, returning their 1-based indices [index1, index2].",
+    "function_name": "twoSum",
+    "signatures": {
+      "python": "def twoSum(self, numbers: list[int], target: int) -> list[int]:",
+      "c": "int* twoSum(int* numbers, int numbersSize, int target, int* returnSize)",
+      "cpp": "vector<int> twoSum(vector<int>& numbers, int target)",
+      "java": "public int[] twoSum(int[] numbers, int target)"
+    },
+    "reference_solution": "class Solution:\n    def twoSum(self, numbers: list, target: int) -> list:\n        l, r = 0, len(numbers) - 1\n        while l < r:\n            s = numbers[l] + numbers[r]\n            if s == target:\n                return [l + 1, r + 1]\n            elif s < target:\n                l += 1\n            else:\n                r -= 1\n        return []",
+    "tests": [
+      { "input": [[2, 7, 11, 15], 9], "expected": [1, 2] },
+      { "input": [[2, 3, 4], 6], "expected": [1, 3] },
+      { "input": [[-1, 0], -1], "expected": [1, 2] },
+      { "input": [[5, 25, 75], 100], "expected": [2, 3] },
+      { "input": [[0, 0, 3, 4], 0], "expected": [1, 2] },
+      { "input": [[-10, -5, 0, 5, 10], 0], "expected": [1, 5] }
+    ]
+  },
+  {
+    "id": "sort-colors",
+    "title": "Sort Colors",
+    "difficulty": "Medium",
+    "url": "https://leetcode.com/problems/sort-colors/",
+    "description": "Given an array nums with n objects colored red, white, or blue (represented as 0, 1, 2), sort them in-place so that adjacent colors group together in the order 0, 1, 2.",
+    "function_name": "sortColors",
+    "signatures": {
+      "python": "def sortColors(self, nums: list[int]) -> list[int]:",
+      "c": "void sortColors(int* nums, int numsSize)",
+      "cpp": "void sortColors(vector<int>& nums)",
+      "java": "public void sortColors(int[] nums)"
+    },
+    "reference_solution": "class Solution:\n    def sortColors(self, nums: list) -> list:\n        low, mid, high = 0, 0, len(nums) - 1\n        while mid <= high:\n            if nums[mid] == 0:\n                nums[low], nums[mid] = nums[mid], nums[low]\n                low += 1\n                mid += 1\n            elif nums[mid] == 1:\n                mid += 1\n            else:\n                nums[mid], nums[high] = nums[high], nums[mid]\n                high -= 1\n        return nums",
+    "tests": [
+      { "input": [[2, 0, 2, 1, 1, 0]], "expected": [0, 0, 1, 1, 2, 2] },
+      { "input": [[2, 0, 1]], "expected": [0, 1, 2] },
+      { "input": [[0]], "expected": [0] },
+      { "input": [[1]], "expected": [1] },
+      { "input": [[2, 2, 2, 0, 0]], "expected": [0, 0, 2, 2, 2] },
+      { "input": [[1, 2, 0]], "expected": [0, 1, 2] }
+    ]
+  },
+  {
+    "id": "longest-substring-without-repeating-characters",
+    "title": "Longest Substring Without Repeating Characters",
+    "difficulty": "Medium",
+    "url": "https://leetcode.com/problems/longest-substring-without-repeating-characters/",
+    "description": "Given a string s, find the length of the longest substring without duplicate characters.",
+    "function_name": "lengthOfLongestSubstring",
+    "signatures": {
+      "python": "def lengthOfLongestSubstring(self, s: str) -> int:",
+      "c": "int lengthOfLongestSubstring(char* s)",
+      "cpp": "int lengthOfLongestSubstring(string s)",
+      "java": "public int lengthOfLongestSubstring(String s)"
+    },
+    "reference_solution": "class Solution:\n    def lengthOfLongestSubstring(self, s: str) -> int:\n        used = {}\n        max_len = 0\n        start = 0\n        for i, ch in enumerate(s):\n            if ch in used and start <= used[ch]:\n                start = used[ch] + 1\n            else:\n                max_len = max(max_len, i - start + 1)\n            used[ch] = i\n        return max_len",
+    "tests": [
+      { "input": ["abcabcbb"], "expected": 3 },
+      { "input": ["bbbbb"], "expected": 1 },
+      { "input": ["pwwkew"], "expected": 3 },
+      { "input": [""], "expected": 0 },
+      { "input": [" "], "expected": 1 },
+      { "input": ["au"], "expected": 2 }
+    ]
+  },
+  {
+    "id": "search-in-rotated-sorted-array",
+    "title": "Search in Rotated Sorted Array",
+    "difficulty": "Medium",
+    "url": "https://leetcode.com/problems/search-in-rotated-sorted-array/",
+    "description": "Given an integer array nums sorted in ascending order (with distinct values) and possibly rotated at an unknown pivot index, return the index of target if found, or -1 otherwise.",
+    "function_name": "search",
+    "signatures": {
+      "python": "def search(self, nums: list[int], target: int) -> int:",
+      "c": "int search(int* nums, int numsSize, int target)",
+      "cpp": "int search(vector<int>& nums, int target)",
+      "java": "public int search(int[] nums, int target)"
+    },
+    "reference_solution": "class Solution:\n    def search(self, nums: list, target: int) -> int:\n        l, r = 0, len(nums) - 1\n        while l <= r:\n            mid = (l + r) // 2\n            if nums[mid] == target:\n                return mid\n            if nums[l] <= nums[mid]:\n                if nums[l] <= target < nums[mid]:\n                    r = mid - 1\n                else:\n                    l = mid + 1\n            else:\n                if nums[mid] < target <= nums[r]:\n                    l = mid + 1\n                else:\n                    r = mid - 1\n        return -1",
+    "tests": [
+      { "input": [[4, 5, 6, 7, 0, 1, 2], 0], "expected": 4 },
+      { "input": [[4, 5, 6, 7, 0, 1, 2], 3], "expected": -1 },
+      { "input": [[1], 0], "expected": -1 },
+      { "input": [[1], 1], "expected": 0 },
+      { "input": [[3, 1], 1], "expected": 1 },
+      { "input": [[5, 1, 3], 5], "expected": 0 }
+    ]
+  }
+]

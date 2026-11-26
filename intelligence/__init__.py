@@ -14,6 +14,15 @@ from intelligence.topics import (
     TopicPerformanceMetric,
     get_problem_topics,
 )
+from intelligence.tracker import (
+    DEFAULT_TRACKING_DB_PATH,
+    ProblemProgressStatus,
+    SessionStatus,
+    SessionTracker,
+    TrackedProblemItem,
+    TrackedSessionRecord,
+    TrackingAnalytics,
+)
 
 __all__ = [
     "ProblemSelector",
@@ -27,4 +36,11 @@ __all__ = [
     "LearningSessionPlan",
     "SessionProblemRole",
     "SessionPlanner",
+    "SessionTracker",
+    "SessionStatus",
+    "ProblemProgressStatus",
+    "TrackedProblemItem",
+    "TrackedSessionRecord",
+    "TrackingAnalytics",
+    "DEFAULT_TRACKING_DB_PATH",
 ]

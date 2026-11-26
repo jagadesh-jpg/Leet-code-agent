@@ -241,6 +241,53 @@ def main():
         help="Number of problems to include in the learning session plan (default: 3)",
     )
     parser.add_argument(
+        "--save-session",
+        action="store_true",
+        help="Save generated learning session to local tracking database",
+    )
+    parser.add_argument(
+        "--sessions",
+        action="store_true",
+        help="List all tracked learning sessions and their statuses",
+    )
+    parser.add_argument(
+        "--session-info",
+        type=str,
+        default=None,
+        metavar="SESSION_ID",
+        help="Inspect details and problem statuses of a specific learning session",
+    )
+    parser.add_argument(
+        "--session-update",
+        type=str,
+        default=None,
+        metavar="SESSION_ID",
+        help="Update session status or problem progress (used with --problem and --status)",
+    )
+    parser.add_argument(
+        "--problem",
+        type=str,
+        default=None,
+        help="Problem ID to update within a session",
+    )
+    parser.add_argument(
+        "--status",
+        choices=["start", "completed", "skipped", "cancel"],
+        default=None,
+        help="Action or status update to apply to session or problem",
+    )
+    parser.add_argument(
+        "--analytics",
+        action="store_true",
+        help="Display aggregate session completion analytics and feedback",
+    )
+    parser.add_argument(
+        "--tracking-db-path",
+        type=str,
+        default=None,
+        help="Custom SQLite database path for session tracking (defaults to session_tracking.db)",
+    )
+    parser.add_argument(
         "--all",
         action="store_true",
         help="Include already solved problems in selection ranking (default: False)",
@@ -346,7 +393,126 @@ def main():
         if session_plan.covered_topics:
             print(f"  Topic Coverage: {', '.join(session_plan.covered_topics)}")
         print("=" * 80)
+        if args.save_session and session_plan.planned_problems:
+            from intelligence.tracker import SessionTracker
+            tracker = SessionTracker(db_path=args.tracking_db_path)
+            record = tracker.record_session(session_plan)
+            print(f"  [SAVED] Session persisted to tracking DB with ID: {record.session_id}")
+            print(f"          Tracking DB: {tracker.db_path}")
+            print("=" * 80)
         print("  NOTE: This is a preview-only plan. No problems were executed or submitted.")
+        print("=" * 80 + "\n")
+        sys.exit(0)
+
+    if args.sessions:
+        from intelligence.tracker import SessionTracker
+        tracker = SessionTracker(db_path=args.tracking_db_path)
+        sessions = tracker.list_sessions()
+        print("=" * 80)
+        print("  TRACKED LEARNING SESSIONS")
+        print("=" * 80)
+        print(f"  Tracking DB: {tracker.db_path}")
+        print("-" * 80)
+        print(f"{'SESSION ID':<18} {'STATUS':<13} {'PLANNED':<9} {'DONE':<6} {'SKIPPED':<9} {'CREATED AT':<20}")
+        print("-" * 80)
+        if not sessions:
+            print("  (No tracked sessions found.)")
+        for s in sessions:
+            print(f"{s.session_id:<18} {s.status.value:<13} {s.total_problems:<9} {s.completed_count:<6} {s.skipped_count:<9} {s.created_at[:19]:<20}")
+        print("=" * 80 + "\n")
+        sys.exit(0)
+
+    if args.session_info:
+        from intelligence.tracker import SessionTracker
+        tracker = SessionTracker(db_path=args.tracking_db_path)
+        sess = tracker.get_session(args.session_info)
+        if not sess:
+            print(f"Error: Session '{args.session_info}' not found.")
+            sys.exit(1)
+
+        print("=" * 80)
+        print(f"  SESSION DETAILS: {sess.session_id}")
+        print("=" * 80)
+        print(f"  Status:       {sess.status.value.upper()}")
+        print(f"  Language:     {sess.target_language}")
+        print(f"  Created:      {sess.created_at}")
+        print(f"  Updated:      {sess.updated_at}")
+        print(f"  Completed:    {sess.completed_at or 'N/A'}")
+        print(f"  Progress:     {sess.completed_count} completed, {sess.skipped_count} skipped, {sess.pending_count} pending / {sess.total_problems} total")
+        print(f"  Summary:      {sess.session_summary}")
+        print("-" * 80)
+        print(f"{'#':<3} {'PROBLEM ID':<25} {'ROLE':<15} {'DIFF':<8} {'STATUS':<12} {'OUTCOME / NOTES'}")
+        print("-" * 80)
+        for p in sess.problems:
+            outcome = p.outcome_notes or (p.completed_at[:19] if p.completed_at else "-")
+            print(f"{p.rank:<3} {p.problem_id:<25} {p.role:<15} {p.difficulty:<8} {p.status.value:<12} {outcome}")
+        print("=" * 80 + "\n")
+        sys.exit(0)
+
+    if args.session_update:
+        from intelligence.tracker import ProblemProgressStatus, SessionTracker
+        tracker = SessionTracker(db_path=args.tracking_db_path)
+        sid = args.session_update
+
+        if not args.status:
+            print("Error: --session-update requires --status [start | completed | skipped | cancel]")
+            sys.exit(1)
+
+        try:
+            if args.status == "start":
+                updated = tracker.start_session(sid)
+                print(f"Session '{sid}' status updated to: {updated.status.value}")
+            elif args.status == "cancel":
+                updated = tracker.cancel_session(sid, reason="Cancelled via CLI")
+                print(f"Session '{sid}' status updated to: {updated.status.value}")
+            elif args.status in ("completed", "skipped"):
+                if not args.problem:
+                    # Update whole session
+                    if args.status == "completed":
+                        updated = tracker.complete_session(sid)
+                        print(f"Session '{sid}' marked as: {updated.status.value}")
+                    else:
+                        print("Error: To mark a problem skipped, provide --problem <problem_id>")
+                        sys.exit(1)
+                else:
+                    target_status = ProblemProgressStatus.COMPLETED if args.status == "completed" else ProblemProgressStatus.SKIPPED
+                    updated = tracker.update_problem_progress(sid, args.problem, target_status)
+                    print(f"Problem '{args.problem}' in session '{sid}' updated to: {target_status.value}")
+                    # If all problems finished, optionally complete session
+                    if updated.pending_count == 0:
+                        tracker.complete_session(sid)
+                        print(f"All problems finished! Session '{sid}' marked as COMPLETED.")
+        except Exception as e:
+            print(f"Error updating session: {e}")
+            sys.exit(1)
+
+        print("=" * 80 + "\n")
+        sys.exit(0)
+
+    if args.analytics:
+        from intelligence.tracker import SessionTracker
+        tracker = SessionTracker(db_path=args.tracking_db_path)
+        stats = tracker.get_analytics()
+        print("=" * 80)
+        print("  LEARNING SESSION TRACKING & FEEDBACK ANALYTICS")
+        print("=" * 80)
+        print(f"  Tracking Database:         {tracker.db_path}")
+        print("-" * 80)
+        print(f"  Sessions Planned:          {stats.total_sessions_planned}")
+        print(f"  Sessions Completed:        {stats.total_sessions_completed}")
+        print(f"  Sessions In-Progress:      {stats.total_sessions_in_progress}")
+        print(f"  Sessions Cancelled:        {stats.total_sessions_cancelled}")
+        print(f"  Session Completion Rate:   {stats.session_completion_rate * 100:.1f}%")
+        print("-" * 80)
+        print(f"  Problems Planned:          {stats.total_problems_planned}")
+        print(f"  Problems Completed:        {stats.total_problems_completed}")
+        print(f"  Problems Skipped:          {stats.total_problems_skipped}")
+        print(f"  Problem Completion Rate:   {stats.problem_completion_rate * 100:.1f}%")
+        print("=" * 80)
+        if stats.recent_sessions:
+            print("  RECENT SESSIONS:")
+            for s in stats.recent_sessions:
+                print(f"    - [{s['status'].upper():<11}] {s['session_id']} ({s['created_at'][:10]}) : {s['summary'][:60]}...")
         print("=" * 80 + "\n")
         sys.exit(0)
 

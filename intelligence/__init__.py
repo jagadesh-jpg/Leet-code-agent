@@ -41,6 +41,16 @@ from intelligence.insights import (
     LearningInsightsReport,
     TopicImprovementMetric,
 )
+from intelligence.interview_analytics import (
+    InterviewAnalyticsGoal,
+    InterviewAnalyticsManager,
+    InterviewAnalyticsOverview,
+    LanguageBenchmarkMetric,
+    PerformanceInsight,
+    ScoreCategoryTrend,
+    TopicInterviewMetric,
+    TrackBenchmarkMetric,
+)
 from intelligence.mock_interview import (
     ASSESSMENT_DISCLAIMER,
     AssessmentReport,
@@ -219,4 +229,12 @@ __all__ = [
     "AssessmentReport",
     "MockInterviewSession",
     "ASSESSMENT_DISCLAIMER",
+    "InterviewAnalyticsManager",
+    "InterviewAnalyticsOverview",
+    "ScoreCategoryTrend",
+    "PerformanceInsight",
+    "TrackBenchmarkMetric",
+    "LanguageBenchmarkMetric",
+    "TopicInterviewMetric",
+    "InterviewAnalyticsGoal",
 ]

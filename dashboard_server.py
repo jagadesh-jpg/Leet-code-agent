@@ -40,6 +40,11 @@ from intelligence.goals import (
     MilestoneAchievement,
 )
 from intelligence.insights import LearningInsightsEngine
+from intelligence.interview_analytics import (
+    InterviewAnalyticsGoal,
+    InterviewAnalyticsManager,
+    InterviewAnalyticsOverview,
+)
 from intelligence.mock_interview import (
     AssessmentReport,
     InterviewManager,
@@ -1325,6 +1330,132 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                         <tr><td colspan="7" style="padding: 8px; color: var(--text-muted); text-align: center;">No assessments recorded yet.</td></tr>
                     </tbody>
                 </table>
+            </div>
+        </div>
+
+        <!-- Interview Performance Trends & Benchmark Analytics (Milestone 6.3.20) -->
+        <div class="card" id="interviewAnalyticsSection">
+            <div class="card-header">
+                <div>
+                    <h2>Interview Performance Trends & Benchmark Analytics</h2>
+                    <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 4px;">
+                        Longitudinal score trend analytics, recurring weakness detection, track/language benchmarks, and practice goals.
+                    </p>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <select id="ianalyticsPreset" onchange="reloadInterviewAnalytics()" style="background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 0.8rem;">
+                        <option value="all_time" selected>All Time</option>
+                        <option value="last_7_days">Last 7 Days</option>
+                        <option value="last_30_days">Last 30 Days</option>
+                        <option value="last_90_days">Last 90 Days</option>
+                    </select>
+                    <button class="btn btn-secondary btn-sm" onclick="reloadInterviewAnalytics()">Refresh Analytics</button>
+                </div>
+            </div>
+
+            <!-- Top Summary Stats Grid -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px;">
+                <div style="background: rgba(15, 23, 42, 0.6); padding: 12px; border-radius: 6px; border: 1px solid var(--border);">
+                    <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Completed Assessments</div>
+                    <div id="iaTotalCount" style="font-size: 1.4rem; font-weight: 700; color: var(--text); margin-top: 4px;">0</div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">Evaluated Sessions</div>
+                </div>
+                <div style="background: rgba(15, 23, 42, 0.6); padding: 12px; border-radius: 6px; border: 1px solid var(--border);">
+                    <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Average Score</div>
+                    <div id="iaAvgScore" style="font-size: 1.4rem; font-weight: 700; color: var(--primary); margin-top: 4px;">0.0</div>
+                    <div id="iaExtremes" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">High: - | Low: -</div>
+                </div>
+                <div style="background: rgba(15, 23, 42, 0.6); padding: 12px; border-radius: 6px; border: 1px solid var(--border);">
+                    <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Latest Score</div>
+                    <div id="iaLatestScore" style="font-size: 1.4rem; font-weight: 700; color: var(--accent); margin-top: 4px;">-</div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">Most Recent Assessment</div>
+                </div>
+                <div style="background: rgba(15, 23, 42, 0.6); padding: 12px; border-radius: 6px; border: 1px solid var(--border);">
+                    <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Problem Completion Rate</div>
+                    <div id="iaCompletionRate" style="font-size: 1.4rem; font-weight: 700; color: var(--success); margin-top: 4px;">0.0%</div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">Fully Solved Problems</div>
+                </div>
+            </div>
+
+            <!-- Category Trends Grid -->
+            <div style="margin-bottom: 16px;">
+                <h3 style="font-size: 0.95rem; color: var(--text); margin-bottom: 8px;">Rubric Category Performance & Trends</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px;" id="iaCategoryTrendsGrid">
+                    <!-- Populated dynamically via JS -->
+                </div>
+            </div>
+
+            <!-- Two-Column Benchmarks Grid: Tracks & Languages -->
+            <div style="display: grid; grid-template-columns: 1.1fr 1fr; gap: 16px; margin-bottom: 16px;" id="iaBenchmarksGrid">
+                <!-- Track Benchmarks -->
+                <div style="background: rgba(15, 23, 42, 0.4); border: 1px solid var(--border); border-radius: 8px; padding: 12px;">
+                    <h3 style="font-size: 0.9rem; color: var(--text); margin-bottom: 8px;">Difficulty Track Comparison</h3>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid var(--border); color: var(--text-muted); text-align: left;">
+                                <th style="padding: 4px 6px;">Track</th>
+                                <th style="padding: 4px 6px;">Count</th>
+                                <th style="padding: 4px 6px;">Avg Score</th>
+                                <th style="padding: 4px 6px;">High</th>
+                                <th style="padding: 4px 6px;">Completion</th>
+                                <th style="padding: 4px 6px;">Reliability</th>
+                            </tr>
+                        </thead>
+                        <tbody id="iaTracksTableBody">
+                            <tr><td colspan="6" style="padding: 6px; color: var(--text-muted); text-align: center;">No track data recorded yet.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Language Benchmarks -->
+                <div style="background: rgba(15, 23, 42, 0.4); border: 1px solid var(--border); border-radius: 8px; padding: 12px;">
+                    <h3 style="font-size: 0.9rem; color: var(--text); margin-bottom: 8px;">Programming Language Benchmarks</h3>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid var(--border); color: var(--text-muted); text-align: left;">
+                                <th style="padding: 4px 6px;">Language</th>
+                                <th style="padding: 4px 6px;">Count</th>
+                                <th style="padding: 4px 6px;">Avg Score</th>
+                                <th style="padding: 4px 6px;">Correctness</th>
+                                <th style="padding: 4px 6px;">Structure</th>
+                            </tr>
+                        </thead>
+                        <tbody id="iaLanguagesTableBody">
+                            <tr><td colspan="5" style="padding: 6px; color: var(--text-muted); text-align: center;">No language data recorded yet.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Performance Insights & Weaknesses -->
+            <div style="margin-bottom: 16px;">
+                <h3 style="font-size: 0.95rem; color: var(--text); margin-bottom: 8px;">Performance Pattern & Weakness Detection</h3>
+                <div id="iaInsightsContainer" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px;">
+                    <div style="background: rgba(30, 41, 59, 0.4); padding: 10px; border-radius: 6px; border: 1px solid var(--border); color: var(--text-muted); font-size: 0.85rem;">
+                        Complete at least 2 mock assessments to generate evidence-based pattern insights.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Interview Practice Goals & Progress -->
+            <div style="background: rgba(15, 23, 42, 0.4); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h3 style="font-size: 0.95rem; color: var(--text); margin: 0;">Interview Practice Goals</h3>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <select id="newGoalType" style="background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 0.8rem;">
+                            <option value="target_average_score">Target Average Score (/100)</option>
+                            <option value="target_correctness">Target Correctness (/40)</option>
+                            <option value="target_completion_ratio">Target Completion Rate (%)</option>
+                            <option value="interviews_per_month">Monthly Assessments Count</option>
+                            <option value="target_complexity">Target Complexity Score (/15)</option>
+                        </select>
+                        <input type="number" id="newGoalValue" placeholder="Target" style="width: 80px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 0.8rem;">
+                        <button class="btn btn-primary btn-sm" onclick="createInterviewGoal()">Set Goal</button>
+                    </div>
+                </div>
+                <div id="iaGoalsList" style="font-size: 0.85rem; color: var(--text-muted);">
+                    No interview practice goals configured yet.
+                </div>
             </div>
         </div>
 
@@ -3208,7 +3339,168 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             }
         }
 
-        // Initialize Coach, Revision, Goals, Roadmap, Daily Mission, Workspace, Portfolio, and Interview on window load
+        // Interview Performance Trends & Benchmark Analytics (Milestone 6.3.20)
+        async function reloadInterviewAnalytics() {
+            try {
+                const presetEl = document.getElementById("ianalyticsPreset");
+                const preset = presetEl ? presetEl.value : "all_time";
+
+                const res = await fetch(`/api/interview-analytics?date_preset=${encodeURIComponent(preset)}`);
+                if (!res.ok) return;
+                const data = await res.json();
+
+                // Top stats
+                if (document.getElementById("iaTotalCount")) document.getElementById("iaTotalCount").textContent = data.total_completed_interviews;
+                if (document.getElementById("iaAvgScore")) document.getElementById("iaAvgScore").textContent = data.average_score.toFixed(1);
+                if (document.getElementById("iaLatestScore")) document.getElementById("iaLatestScore").textContent = data.latest_score !== null ? data.latest_score.toFixed(1) : "-";
+                if (document.getElementById("iaExtremes")) document.getElementById("iaExtremes").textContent = `High: ${data.highest_score !== null ? data.highest_score : '-'} | Low: ${data.lowest_score !== null ? data.lowest_score : '-'}`;
+                if (document.getElementById("iaCompletionRate")) document.getElementById("iaCompletionRate").textContent = `${data.completion_rate_pct.toFixed(1)}%`;
+
+                // Category trends
+                const trendsGrid = document.getElementById("iaCategoryTrendsGrid");
+                if (trendsGrid && data.score_trends) {
+                    trendsGrid.innerHTML = Object.entries(data.score_trends).map(([key, t]) => {
+                        let arrow = "•";
+                        let deltaColor = "var(--text-muted)";
+                        if (t.trend_direction === "improving") {
+                            arrow = "▲";
+                            deltaColor = "var(--success)";
+                        } else if (t.trend_direction === "declining") {
+                            arrow = "▼";
+                            deltaColor = "var(--danger)";
+                        }
+                        const deltaStr = t.delta_score !== null ? `${t.delta_score > 0 ? '+' : ''}${t.delta_score}` : 'N/A';
+                        return `
+                            <div style="background: rgba(30, 41, 59, 0.5); padding: 10px; border-radius: 6px; border: 1px solid var(--border);">
+                                <div style="font-size: 0.75rem; color: var(--text-muted);">${t.category_name}</div>
+                                <div style="font-size: 1.2rem; font-weight: 700; color: var(--text); margin-top: 2px;">${t.average_score} <span style="font-size: 0.8rem; color: var(--text-muted);">/ ${t.max_possible}</span></div>
+                                <div style="font-size: 0.75rem; color: ${deltaColor}; margin-top: 4px;">
+                                    ${arrow} ${deltaStr} (${t.trend_direction.replace('_', ' ')})
+                                </div>
+                            </div>
+                        `;
+                    }).join("");
+                }
+
+                // Track benchmarks table
+                const tracksTbody = document.getElementById("iaTracksTableBody");
+                if (tracksTbody && data.track_benchmarks) {
+                    tracksTbody.innerHTML = data.track_benchmarks.map(b => `
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <td style="padding: 4px 6px; font-weight: 600;">${b.track.toUpperCase()}</td>
+                            <td style="padding: 4px 6px;">${b.assessment_count}</td>
+                            <td style="padding: 4px 6px; color: var(--primary);">${b.average_score.toFixed(1)}</td>
+                            <td style="padding: 4px 6px;">${b.highest_score.toFixed(1)}</td>
+                            <td style="padding: 4px 6px;">${b.average_completion_rate.toFixed(1)}%</td>
+                            <td style="padding: 4px 6px; font-size: 0.7rem; color: ${b.is_statistically_reliable ? 'var(--success)' : 'var(--text-muted)'};">
+                                ${b.is_statistically_reliable ? 'Reliable (N>=3)' : 'Sample < 3'}
+                            </td>
+                        </tr>
+                    `).join("");
+                }
+
+                // Language benchmarks table
+                const langsTbody = document.getElementById("iaLanguagesTableBody");
+                if (langsTbody && data.language_benchmarks) {
+                    langsTbody.innerHTML = data.language_benchmarks.map(l => `
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <td style="padding: 4px 6px; font-weight: 600;">${l.language.toUpperCase()}</td>
+                            <td style="padding: 4px 6px;">${l.interview_count}</td>
+                            <td style="padding: 4px 6px; color: var(--accent);">${l.average_score.toFixed(1)}</td>
+                            <td style="padding: 4px 6px;">${l.average_correctness.toFixed(1)}/40</td>
+                            <td style="padding: 4px 6px;">${l.average_structure.toFixed(1)}/15</td>
+                        </tr>
+                    `).join("");
+                }
+
+                // Insights & Weaknesses
+                const insightsBox = document.getElementById("iaInsightsContainer");
+                if (insightsBox) {
+                    if (!data.insights || data.insights.length === 0) {
+                        insightsBox.innerHTML = `
+                            <div style="background: rgba(30, 41, 59, 0.4); padding: 10px; border-radius: 6px; border: 1px solid var(--border); color: var(--text-muted); font-size: 0.85rem;">
+                                No recurring weaknesses identified yet. Complete additional assessments to detect patterns.
+                            </div>
+                        `;
+                    } else {
+                        insightsBox.innerHTML = data.insights.map(i => {
+                            let typeColor = i.pattern_type === 'weakness' ? 'var(--danger)' : (i.pattern_type === 'strength' ? 'var(--success)' : 'var(--warning)');
+                            return `
+                                <div style="background: rgba(30, 41, 59, 0.5); padding: 12px; border-radius: 6px; border-left: 3px solid ${typeColor};">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                        <strong style="color: var(--text); font-size: 0.9rem;">${i.title}</strong>
+                                        <span class="status-badge" style="font-size: 0.7rem; background: rgba(0,0,0,0.3); color: ${typeColor};">${i.pattern_type.toUpperCase()}</span>
+                                    </div>
+                                    <div style="font-size: 0.8rem; color: #bae6fd; margin-bottom: 6px;">${i.description}</div>
+                                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px;"><strong>Rule:</strong> ${i.rule_applied}</div>
+                                    <div style="font-size: 0.8rem; color: #a5f3fc; background: rgba(0,0,0,0.25); padding: 6px 8px; border-radius: 4px;">
+                                        <strong>Suggested Action:</strong> ${i.suggested_action}
+                                    </div>
+                                </div>
+                            `;
+                        }).join("");
+                    }
+                }
+
+                // Goals List
+                const goalsBox = document.getElementById("iaGoalsList");
+                if (goalsBox) {
+                    if (!data.active_goals || data.active_goals.length === 0) {
+                        goalsBox.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem;">No active interview practice goals. Use the form above to add one.</div>';
+                    } else {
+                        goalsBox.innerHTML = data.active_goals.map(g => `
+                            <div style="margin-bottom: 10px; background: rgba(15, 23, 42, 0.5); padding: 10px; border-radius: 6px; border: 1px solid var(--border);">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                    <strong style="color: var(--text); font-size: 0.85rem;">${g.description}</strong>
+                                    <span style="font-size: 0.8rem; font-weight: 600; color: ${g.is_achieved ? 'var(--success)' : 'var(--primary)'};">
+                                        ${g.current_value} / ${g.target_value} (${g.progress_pct}%)
+                                    </span>
+                                </div>
+                                <div class="progress-bar-container" style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+                                    <div style="height: 100%; width: ${g.progress_pct}%; background: ${g.is_achieved ? 'var(--success)' : 'var(--primary)'}; border-radius: 3px;"></div>
+                                </div>
+                            </div>
+                        `).join("");
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to reload interview analytics:", err);
+            }
+        }
+
+        async function createInterviewGoal() {
+            try {
+                const type = document.getElementById("newGoalType").value;
+                const val = parseFloat(document.getElementById("newGoalValue").value);
+                if (isNaN(val) || val <= 0) {
+                    showToast("Please enter a valid target value greater than 0", "warning");
+                    return;
+                }
+
+                const res = await fetch("/api/interview-analytics/goals", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        goal_type: type,
+                        target_value: val,
+                        period: "all_time"
+                    })
+                });
+
+                if (res.ok) {
+                    showToast("Interview goal created successfully!", "success");
+                    document.getElementById("newGoalValue").value = "";
+                    reloadInterviewAnalytics();
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Failed to create goal", "error");
+                }
+            } catch (err) {
+                showToast("Error creating interview goal", "error");
+            }
+        }
+
+        // Initialize Coach, Revision, Goals, Roadmap, Daily Mission, Workspace, Portfolio, Interview, and Analytics on window load
         window.addEventListener("DOMContentLoaded", () => {
             initCoach();
             reloadRevisionQueue();
@@ -3219,6 +3511,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             reloadPortfolioPreview();
             reloadInterviewState();
             reloadInterviewHistory();
+            reloadInterviewAnalytics();
         });
 
         // Close modal on outside click
@@ -4805,6 +5098,220 @@ def create_app(
 
         from dataclasses import asdict
         return jsonify(asdict(interview))
+
+    # -------------------------------------------------------------------------
+    # Milestone 6.3.20: Interview Performance Trends & Benchmark Analytics APIs
+    # -------------------------------------------------------------------------
+
+    @app.route("/api/interview-analytics")
+    def api_interview_analytics():
+        """Retrieve full aggregated interview performance trends, benchmarks, and goals."""
+        timeframe = request.args.get("timeframe", "all_time")
+        custom_start = request.args.get("custom_start")
+        custom_end = request.args.get("custom_end")
+
+        mgr = InterviewAnalyticsManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        overview = mgr.get_analytics_overview(
+            date_preset=timeframe,
+            start_date=custom_start,
+            end_date=custom_end,
+        )
+        from dataclasses import asdict
+        return jsonify(asdict(overview))
+
+    @app.route("/api/interview-analytics/trends")
+    def api_interview_analytics_trends():
+        """Retrieve multi-category rubric performance trends."""
+        timeframe = request.args.get("timeframe", "all_time")
+        custom_start = request.args.get("custom_start")
+        custom_end = request.args.get("custom_end")
+
+        mgr = InterviewAnalyticsManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        interviews = mgr.get_completed_interviews(
+            date_preset=timeframe,
+            start_date=custom_start,
+            end_date=custom_end,
+        )
+        trends = mgr.calculate_score_trends(interviews)
+        from dataclasses import asdict
+        return jsonify({k: asdict(v) for k, v in trends.items()})
+
+    @app.route("/api/interview-analytics/tracks")
+    def api_interview_analytics_tracks():
+        """Retrieve track benchmarks (Beginner, Intermediate, Advanced, Mixed)."""
+        timeframe = request.args.get("timeframe", "all_time")
+        custom_start = request.args.get("custom_start")
+        custom_end = request.args.get("custom_end")
+
+        mgr = InterviewAnalyticsManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        interviews = mgr.get_completed_interviews(
+            date_preset=timeframe,
+            start_date=custom_start,
+            end_date=custom_end,
+        )
+        tracks = mgr.analyze_tracks(interviews)
+        from dataclasses import asdict
+        return jsonify([asdict(t) for t in tracks])
+
+    @app.route("/api/interview-analytics/languages")
+    def api_interview_analytics_languages():
+        """Retrieve programming language benchmarks (Python, C, C++, Java)."""
+        timeframe = request.args.get("timeframe", "all_time")
+        custom_start = request.args.get("custom_start")
+        custom_end = request.args.get("custom_end")
+
+        mgr = InterviewAnalyticsManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        interviews = mgr.get_completed_interviews(
+            date_preset=timeframe,
+            start_date=custom_start,
+            end_date=custom_end,
+        )
+        languages = mgr.analyze_languages(interviews)
+        from dataclasses import asdict
+        return jsonify([asdict(l) for l in languages])
+
+    @app.route("/api/interview-analytics/insights")
+    def api_interview_analytics_insights():
+        """Retrieve evidence-based recurring weaknesses and performance patterns."""
+        timeframe = request.args.get("timeframe", "all_time")
+        custom_start = request.args.get("custom_start")
+        custom_end = request.args.get("custom_end")
+
+        mgr = InterviewAnalyticsManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        interviews = mgr.get_completed_interviews(
+            date_preset=timeframe,
+            start_date=custom_start,
+            end_date=custom_end,
+        )
+        trends = mgr.calculate_score_trends(interviews)
+        insights = mgr.analyze_performance_patterns(interviews, trends)
+        from dataclasses import asdict
+        return jsonify([asdict(i) for i in insights])
+
+    @app.route("/api/interview-analytics/topics")
+    def api_interview_analytics_topics():
+        """Retrieve topic-level interview metrics and roadmap recommendations."""
+        timeframe = request.args.get("timeframe", "all_time")
+        custom_start = request.args.get("custom_start")
+        custom_end = request.args.get("custom_end")
+
+        mgr = InterviewAnalyticsManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        interviews = mgr.get_completed_interviews(
+            date_preset=timeframe,
+            start_date=custom_start,
+            end_date=custom_end,
+        )
+        topic_metrics, rec_topics, rec_revisions = mgr.analyze_topics(interviews)
+        from dataclasses import asdict
+        return jsonify({
+            "topics": [asdict(t) for t in topic_metrics],
+            "recommended_roadmap_topics": rec_topics,
+            "recommended_revisions": rec_revisions,
+        })
+
+    @app.route("/api/interview-analytics/goals", methods=["GET", "POST"])
+    def api_interview_analytics_goals():
+        """Retrieve list of interview practice goals or create a new goal."""
+        mgr = InterviewAnalyticsManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        from dataclasses import asdict
+
+        if request.method == "POST":
+            data = request.get_json(silent=True) or {}
+            goal_type = data.get("goal_type")
+            target_value = data.get("target_value")
+            period = data.get("period", "all_time")
+
+            if not goal_type or target_value is None:
+                return jsonify({"error": "Missing required fields: 'goal_type' and 'target_value'"}), 400
+
+            try:
+                target_val_float = float(target_value)
+                new_goal = mgr.create_goal(
+                    goal_type=goal_type,
+                    target_value=target_val_float,
+                    period=period,
+                )
+                return jsonify(asdict(new_goal)), 201
+            except ValueError as e:
+                return jsonify({"error": str(e)}), 400
+
+        # GET request
+        status_filter = request.args.get("status")
+        goals = mgr.list_goals(status_filter=status_filter)
+        return jsonify([asdict(g) for g in goals])
+
+    @app.route("/api/interview-analytics/goals/<goal_id>", methods=["PUT"])
+    def api_interview_analytics_goal_update(goal_id: str):
+        """Update status or target value of an interview practice goal."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", goal_id):
+            return jsonify({"error": "Invalid goal_id format"}), 400
+
+        data = request.get_json(silent=True) or {}
+        target_value = data.get("target_value")
+        status = data.get("status")
+        period = data.get("period")
+
+        mgr = InterviewAnalyticsManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            target_val_float = float(target_value) if target_value is not None else None
+            updated = mgr.update_goal(
+                goal_id=goal_id,
+                target_value=target_val_float,
+                status=status,
+                period=period,
+            )
+            from dataclasses import asdict
+            return jsonify(asdict(updated)), 200
+        except ValueError as e:
+            err_msg = str(e)
+            status_code = 404 if "not found" in err_msg.lower() else 400
+            return jsonify({"error": err_msg}), status_code
+
+    @app.route("/api/interview-analytics/history")
+    def api_interview_analytics_history():
+        """Retrieve completed interview summaries included in analytics."""
+        timeframe = request.args.get("timeframe", "all_time")
+        custom_start = request.args.get("custom_start")
+        custom_end = request.args.get("custom_end")
+        try:
+            limit = int(request.args.get("limit", 50))
+        except ValueError:
+            limit = 50
+
+        mgr = InterviewAnalyticsManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        interviews = mgr.get_completed_interviews(
+            date_preset=timeframe,
+            start_date=custom_start,
+            end_date=custom_end,
+        )
+        return jsonify(interviews[:limit])
 
     return app
 

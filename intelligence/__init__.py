@@ -67,6 +67,15 @@ from intelligence.roadmap import (
     TopicRoadmapNode,
 )
 from intelligence.selector import ProblemScoreBreakdown, ProblemSelector
+from intelligence.solution_review import (
+    AttemptComparison,
+    CodeQualityMetrics,
+    ComplexityReview,
+    ProblemSolvingChecklist,
+    SolutionReviewEngine,
+    SolutionReviewReport,
+    normalize_complexity_str,
+)
 from intelligence.workspace import (
     DEFAULT_STARTER_CODE,
     ProblemWorkspaceContext,
@@ -161,4 +170,11 @@ __all__ = [
     "WorkspaceDraft",
     "WorkspaceRunResult",
     "DEFAULT_STARTER_CODE",
+    "SolutionReviewEngine",
+    "SolutionReviewReport",
+    "CodeQualityMetrics",
+    "ComplexityReview",
+    "ProblemSolvingChecklist",
+    "AttemptComparison",
+    "normalize_complexity_str",
 ]

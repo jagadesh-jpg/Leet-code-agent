@@ -54,6 +54,15 @@ from intelligence.roadmap import (
     TopicMasteryRecord,
     TopicMasteryStatus,
 )
+from intelligence.solution_review import (
+    AttemptComparison,
+    CodeQualityMetrics,
+    ComplexityReview,
+    ProblemSolvingChecklist,
+    SolutionReviewEngine,
+    SolutionReviewReport,
+    normalize_complexity_str,
+)
 from intelligence.tracker import (
     DEFAULT_TRACKING_DB_PATH,
     ProblemProgressStatus,
@@ -940,6 +949,69 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 <div id="wsResultFeedback" style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px;"></div>
                 <div id="wsResultDiagnostics" style="font-size: 0.8rem; background: #000; border-radius: 6px; padding: 8px; font-family: monospace; color: #fca5a5; white-space: pre-wrap; display: none;"></div>
                 <div id="wsCoachGuidance" style="font-size: 0.8rem; color: #93c5fd; background: rgba(59, 130, 246, 0.1); border-left: 3px solid #38bdf8; padding: 8px; margin-top: 8px; display: none;"></div>
+            </div>
+
+            <!-- Solution Quality Analyzer & Complexity Review Panel (Milestone 6.3.17) -->
+            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-top: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <h3 style="font-size: 1rem; color: var(--primary);">Solution Quality & Complexity Review</h3>
+                    <button class="btn btn-secondary btn-sm" onclick="analyzeCurrentSolutionReview()">Analyze Code Quality</button>
+                </div>
+
+                <div id="solutionReviewOutput" style="display: none;">
+                    <div class="grid-stats" style="margin-bottom: 14px;">
+                        <div class="stat-card" style="padding: 10px;">
+                            <div class="label">Readability</div>
+                            <div class="value" id="srReadabilityScore" style="font-size: 1.3rem; color: #38bdf8;">0/100</div>
+                            <div class="subtext">Naming & format</div>
+                        </div>
+                        <div class="stat-card" style="padding: 10px;">
+                            <div class="label">Structure</div>
+                            <div class="value" id="srStructuralScore" style="font-size: 1.3rem; color: #4ade80;">0/100</div>
+                            <div class="subtext" id="srNestingText">Max depth: 0</div>
+                        </div>
+                        <div class="stat-card" style="padding: 10px;">
+                            <div class="label">Est. Time</div>
+                            <div class="value" id="srEstTime" style="font-size: 1.3rem; color: #fde047;">O(1)</div>
+                            <div class="subtext" id="srTimeMatch">Analyzer assessment</div>
+                        </div>
+                        <div class="stat-card" style="padding: 10px;">
+                            <div class="label">Est. Space</div>
+                            <div class="value" id="srEstSpace" style="font-size: 1.3rem; color: #c084fc;">O(1)</div>
+                            <div class="subtext" id="srSpaceMatch">Auxiliary storage</div>
+                        </div>
+                    </div>
+
+                    <!-- Complexity Self-Assessment Input -->
+                    <div style="background: rgba(30, 41, 59, 0.4); border-radius: 6px; padding: 10px; margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+                        <span style="font-size: 0.8rem; color: var(--text); font-weight: 600;">Complexity Self-Assessment:</span>
+                        <input type="text" id="srLearnerTimeInput" placeholder="Your time est. (e.g. O(N))" style="background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px; padding: 4px 8px; font-size: 0.8rem; width: 140px;">
+                        <input type="text" id="srLearnerSpaceInput" placeholder="Your space est. (e.g. O(1))" style="background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px; padding: 4px 8px; font-size: 0.8rem; width: 140px;">
+                        <button class="btn btn-secondary btn-sm" onclick="submitComplexitySelfAssessment()">Compare Estimate</button>
+                        <span id="srComplexityCompareResult" style="font-size: 0.8rem; color: #7dd3fc;"></span>
+                    </div>
+
+                    <!-- Improvement Suggestions -->
+                    <div style="margin-bottom: 12px;">
+                        <h4 style="font-size: 0.85rem; color: var(--text); margin-bottom: 6px;">Key Suggestions & Observations:</h4>
+                        <ul id="srSuggestionsList" style="padding-left: 20px; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;"></ul>
+                    </div>
+
+                    <!-- Attempt Comparison & Reflection -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 0.8rem;">
+                        <div style="background: rgba(30, 41, 59, 0.4); border-radius: 6px; padding: 8px;">
+                            <strong style="color: var(--text);">Attempt Comparison:</strong>
+                            <p id="srAttemptCompText" style="color: var(--text-muted); margin-top: 4px;">First recorded attempt.</p>
+                        </div>
+                        <div style="background: rgba(30, 41, 59, 0.4); border-radius: 6px; padding: 8px;">
+                            <strong style="color: var(--text);">Algorithmic Reflection Prompt:</strong>
+                            <p id="srReflectionText" style="color: #93c5fd; margin-top: 4px;">Think through space-time tradeoffs.</p>
+                        </div>
+                    </div>
+                </div>
+                <div id="solutionReviewEmptyText" style="text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 10px;">
+                    Click 'Analyze Code Quality' to run static AST analysis, complexity checks, and structural evaluation.
+                </div>
             </div>
         </div>
 
@@ -2182,6 +2254,102 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             document.getElementById("focusModeContainer").scrollIntoView({ behavior: 'smooth' });
         }
 
+        // Solution Review JS (Milestone 6.3.17)
+        let lastSolutionReviewId = null;
+
+        async function analyzeCurrentSolutionReview() {
+            if (!activeWorkspacePid) return;
+            const lang = document.getElementById("wsLanguageSelect").value || "python";
+            const code = document.getElementById("wsCodeEditor").value;
+
+            try {
+                const res = await fetch("/api/workspace/review", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        problem_id: activeWorkspacePid,
+                        language: lang,
+                        code: code,
+                        linked_run_id: lastWorkspaceRunId,
+                        learner_time: document.getElementById("srLearnerTimeInput").value,
+                        learner_space: document.getElementById("srLearnerSpaceInput").value
+                    })
+                });
+                const rev = await res.json();
+                if (res.ok) {
+                    lastSolutionReviewId = rev.review_id;
+                    renderSolutionReview(rev);
+                    showAlert("Solution review completed.");
+                } else {
+                    showAlert(rev.error || "Review failed", false);
+                }
+            } catch (err) {
+                showAlert("Error analyzing code quality", false);
+            }
+        }
+
+        function renderSolutionReview(rev) {
+            document.getElementById("solutionReviewEmptyText").style.display = "none";
+            document.getElementById("solutionReviewOutput").style.display = "block";
+
+            const qm = rev.quality_metrics;
+            const cr = rev.complexity_review;
+
+            document.getElementById("srReadabilityScore").innerText = `${qm.readability_score}/100`;
+            document.getElementById("srStructuralScore").innerText = `${qm.structural_score}/100`;
+            document.getElementById("srNestingText").innerText = `Max depth: ${qm.max_nesting_depth} (${qm.lines_of_code} LOC)`;
+            document.getElementById("srEstTime").innerText = cr.estimated_time_complexity;
+            document.getElementById("srEstSpace").innerText = cr.estimated_space_complexity;
+
+            if (cr.time_comparison) {
+                document.getElementById("srComplexityCompareResult").innerText = cr.time_comparison;
+            } else {
+                document.getElementById("srComplexityCompareResult").innerText = "";
+            }
+
+            const sugList = document.getElementById("srSuggestionsList");
+            sugList.innerHTML = "";
+            (rev.improvement_suggestions || []).forEach(s => {
+                const li = document.createElement("li");
+                li.innerText = s;
+                sugList.appendChild(li);
+            });
+
+            document.getElementById("srAttemptCompText").innerText = rev.attempt_comparison.summary_of_changes || "First recorded attempt.";
+            document.getElementById("srReflectionText").innerText = (rev.reflection_prompts && rev.reflection_prompts[0]) || "Evaluate potential time-space tradeoffs.";
+        }
+
+        async function submitComplexitySelfAssessment() {
+            if (!activeWorkspacePid) return;
+            const lang = document.getElementById("wsLanguageSelect").value || "python";
+            const code = document.getElementById("wsCodeEditor").value;
+            const t = document.getElementById("srLearnerTimeInput").value;
+            const s = document.getElementById("srLearnerSpaceInput").value;
+
+            try {
+                const res = await fetch("/api/workspace/review/complexity", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        problem_id: activeWorkspacePid,
+                        language: lang,
+                        code: code,
+                        learner_time: t,
+                        learner_space: s
+                    })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    document.getElementById("srComplexityCompareResult").innerText = data.time_comparison || "Estimate recorded.";
+                    showAlert("Complexity comparison updated.");
+                } else {
+                    showAlert(data.error || "Complexity check failed", false);
+                }
+            } catch (err) {
+                showAlert("Error submitting complexity estimate", false);
+            }
+        }
+
         // Initialize Coach, Revision, Goals, Roadmap, Daily Mission, and Workspace on window load
         window.addEventListener("DOMContentLoaded", () => {
             initCoach();
@@ -3256,6 +3424,127 @@ def create_app(
 
         from dataclasses import asdict
         return jsonify(asdict(run_res))
+
+    # =========================================================================
+    # Solution Quality Analyzer & Complexity Review Endpoints (Milestone 6.3.17)
+    # =========================================================================
+
+    @app.route("/api/workspace/review", methods=["POST"])
+    def api_workspace_review_solution():
+        """Perform static analysis, complexity review, and checklist synthesis."""
+        req_data = request.get_json(silent=True) or {}
+        problem_id = req_data.get("problem_id", "").strip()
+        code = req_data.get("code", "")
+        language = req_data.get("language", "python")
+        linked_run_id = req_data.get("linked_run_id")
+        learner_time = req_data.get("learner_time")
+        learner_space = req_data.get("learner_space")
+        checklist_overrides = req_data.get("checklist")
+
+        if not problem_id or not re.match(r"^[a-zA-Z0-9_\-]+$", problem_id):
+            return jsonify({"error": "Invalid problem identifier"}), 400
+
+        engine = SolutionReviewEngine(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        report = engine.review_solution(
+            problem_id=problem_id,
+            code=code,
+            language=language,
+            linked_run_id=linked_run_id,
+            learner_time=learner_time,
+            learner_space=learner_space,
+            checklist_overrides=checklist_overrides,
+        )
+        from dataclasses import asdict
+        return jsonify(asdict(report))
+
+    @app.route("/api/workspace/review/<review_id>")
+    def api_workspace_get_review(review_id: str):
+        """Fetch previously stored solution review by review_id."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", review_id):
+            return jsonify({"error": "Invalid review_id format"}), 400
+
+        engine = SolutionReviewEngine(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        review = engine.get_review(review_id)
+        if not review:
+            return jsonify({"error": f"Review '{review_id}' not found"}), 404
+
+        from dataclasses import asdict
+        return jsonify(asdict(review))
+
+    @app.route("/api/workspace/reviews/history")
+    def api_workspace_review_history():
+        """Fetch historical reviews."""
+        problem_id = request.args.get("problem_id")
+        try:
+            limit = int(request.args.get("limit", 10))
+        except ValueError:
+            limit = 10
+
+        engine = SolutionReviewEngine(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        history = engine.list_review_history(problem_id=problem_id, limit=limit)
+        from dataclasses import asdict
+        return jsonify([asdict(h) for h in history])
+
+    @app.route("/api/workspace/review/checklist", methods=["POST"])
+    def api_workspace_review_checklist():
+        """Update or validate checklist items for a problem."""
+        req_data = request.get_json(silent=True) or {}
+        problem_id = req_data.get("problem_id", "").strip()
+        code = req_data.get("code", "")
+        language = req_data.get("language", "python")
+        checklist_overrides = req_data.get("checklist") or {}
+
+        if not problem_id or not re.match(r"^[a-zA-Z0-9_\-]+$", problem_id):
+            return jsonify({"error": "Invalid problem identifier"}), 400
+
+        engine = SolutionReviewEngine(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        report = engine.review_solution(
+            problem_id=problem_id,
+            code=code,
+            language=language,
+            checklist_overrides=checklist_overrides,
+        )
+        from dataclasses import asdict
+        return jsonify({
+            "review_id": report.review_id,
+            "checklist": asdict(report.checklist),
+            "completed_count": report.checklist.completed_count,
+            "total_count": report.checklist.total_count,
+        })
+
+    @app.route("/api/workspace/review/complexity", methods=["POST"])
+    def api_workspace_review_complexity():
+        """Analyze complexity and compare learner estimates."""
+        req_data = request.get_json(silent=True) or {}
+        code = req_data.get("code", "")
+        language = req_data.get("language", "python")
+        learner_time = req_data.get("learner_time")
+        learner_space = req_data.get("learner_space")
+
+        engine = SolutionReviewEngine(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        cr = engine.review_complexity(
+            code=code,
+            language=language,
+            learner_time=learner_time,
+            learner_space=learner_space,
+        )
+        from dataclasses import asdict
+        return jsonify(asdict(cr))
 
     return app
 

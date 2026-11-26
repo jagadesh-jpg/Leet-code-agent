@@ -47,6 +47,18 @@ from intelligence.planner import (
     SessionPlanner,
     SessionProblemRole,
 )
+from intelligence.portfolio import (
+    DEFAULT_PORTFOLIO_EXPORTS_DIR,
+    CodingStatistics,
+    ConsistencyMetrics,
+    DsaMasterySummary,
+    GoalAchievementSummary,
+    LearningJourneyEvent,
+    LearningPortfolioReport,
+    PortfolioConfig,
+    PortfolioManager,
+    SolutionQualitySummary,
+)
 from intelligence.revision import (
     RevisionAnalytics,
     RevisionItem,
@@ -177,4 +189,14 @@ __all__ = [
     "ProblemSolvingChecklist",
     "AttemptComparison",
     "normalize_complexity_str",
+    "PortfolioManager",
+    "PortfolioConfig",
+    "LearningPortfolioReport",
+    "CodingStatistics",
+    "DsaMasterySummary",
+    "ConsistencyMetrics",
+    "GoalAchievementSummary",
+    "SolutionQualitySummary",
+    "LearningJourneyEvent",
+    "DEFAULT_PORTFOLIO_EXPORTS_DIR",
 ]

@@ -15,7 +15,7 @@ from pathlib import Path
 import re
 from typing import Any, Dict, Optional
 
-from flask import Flask, Response, jsonify, render_template_string, request
+from flask import Flask, Response, jsonify, render_template_string, request, send_file
 
 from dashboard import get_dashboard_data, _get_learning_intelligence_data
 from intelligence.adaptive import AdaptiveLearningEngine
@@ -41,6 +41,11 @@ from intelligence.goals import (
 )
 from intelligence.insights import LearningInsightsEngine
 from intelligence.planner import SessionPlanner
+from intelligence.portfolio import (
+    DEFAULT_PORTFOLIO_EXPORTS_DIR,
+    PortfolioConfig,
+    PortfolioManager,
+)
 from intelligence.revision import (
     RevisionOutcome,
     RevisionStatus,
@@ -1011,6 +1016,109 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 </div>
                 <div id="solutionReviewEmptyText" style="text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 10px;">
                     Click 'Analyze Code Quality' to run static AST analysis, complexity checks, and structural evaluation.
+                </div>
+            </div>
+        </div>
+
+        <!-- Personal Learning Portfolio & Progress Report Generator (Milestone 6.3.18) -->
+        <div class="card" id="portfolioSection">
+            <div class="card-header">
+                <div>
+                    <h2>Personal Learning Portfolio & Progress Report Generator</h2>
+                    <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 4px;">
+                        Evidence-based, offline portfolio synthesis. Exports directly to GitHub-Flavored Markdown, structured JSON, and standalone HTML.
+                    </p>
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button class="btn btn-secondary btn-sm" onclick="exportPortfolio('markdown')">Export Markdown</button>
+                    <button class="btn btn-secondary btn-sm" onclick="exportPortfolio('json')">Export JSON</button>
+                    <button class="btn btn-primary btn-sm" onclick="exportPortfolio('html')">Export Standalone HTML</button>
+                </div>
+            </div>
+
+            <!-- Profile and Report Customization Controls -->
+            <div style="background: rgba(15, 23, 42, 0.4); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 12px;">
+                    <div>
+                        <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Learner Name</label>
+                        <input type="text" id="portLearnerName" value="Learner" style="width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; font-size: 0.85rem;">
+                    </div>
+                    <div>
+                        <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Portfolio Title</label>
+                        <input type="text" id="portTitle" value="Developer Learning Portfolio" style="width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; font-size: 0.85rem;">
+                    </div>
+                    <div>
+                        <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Report Presentation Style</label>
+                        <select id="portStyle" onchange="reloadPortfolioPreview()" style="width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; font-size: 0.85rem;">
+                            <option value="developer_portfolio">Developer Learning Portfolio</option>
+                            <option value="dsa_progress">DSA Progress Report</option>
+                            <option value="weekly_summary">Weekly Learning Summary</option>
+                            <option value="monthly_report">Monthly Learning Report</option>
+                            <option value="goal_completion">Goal Completion Report</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Date Range Filter</label>
+                        <select id="portPreset" onchange="toggleCustomDatePreset(); reloadPortfolioPreview();" style="width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; font-size: 0.85rem;">
+                            <option value="all_time">All Time</option>
+                            <option value="last_7_days">Last 7 Days</option>
+                            <option value="last_30_days">Last 30 Days</option>
+                            <option value="last_90_days">Last 90 Days</option>
+                            <option value="custom">Custom Range</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="portCustomDateRow" style="display: none; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                    <div>
+                        <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Start Date (YYYY-MM-DD)</label>
+                        <input type="date" id="portStartDate" style="width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; font-size: 0.85rem;">
+                    </div>
+                    <div>
+                        <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">End Date (YYYY-MM-DD)</label>
+                        <input type="date" id="portEndDate" style="width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; font-size: 0.85rem;">
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                    <button class="btn btn-secondary btn-sm" onclick="savePortfolioConfig()">Save Profile Settings</button>
+                    <button class="btn btn-primary btn-sm" onclick="reloadPortfolioPreview()">Refresh Live Preview</button>
+                </div>
+            </div>
+
+            <!-- Summary & Metric Highlights -->
+            <div id="portExecutiveSummary" style="background: rgba(56, 189, 248, 0.08); border-left: 3px solid var(--primary); padding: 12px; border-radius: 4px; margin-bottom: 16px; font-size: 0.9rem; color: #bae6fd;">
+                Loading executive evidence summary...
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px;">
+                <div style="background: rgba(15, 23, 42, 0.6); padding: 12px; border-radius: 6px; border: 1px solid var(--border);">
+                    <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Verified Solved</div>
+                    <div id="portSolvedStat" style="font-size: 1.4rem; font-weight: 700; color: var(--text); margin-top: 4px;">0</div>
+                    <div id="portDifficultyBreakdown" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">0E / 0M / 0H</div>
+                </div>
+                <div style="background: rgba(15, 23, 42, 0.6); padding: 12px; border-radius: 6px; border: 1px solid var(--border);">
+                    <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Roadmap Progress</div>
+                    <div id="portRoadmapProgressStat" style="font-size: 1.4rem; font-weight: 700; color: var(--primary); margin-top: 4px;">0%</div>
+                    <div id="portProficientTopicsStat" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">0 Topics Proficient</div>
+                </div>
+                <div style="background: rgba(15, 23, 42, 0.6); padding: 12px; border-radius: 6px; border: 1px solid var(--border);">
+                    <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Practice Consistency</div>
+                    <div id="portConsistencyStat" style="font-size: 1.4rem; font-weight: 700; color: var(--success); margin-top: 4px;">0 Days</div>
+                    <div id="portMissionsStat" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">0 Missions Completed</div>
+                </div>
+                <div style="background: rgba(15, 23, 42, 0.6); padding: 12px; border-radius: 6px; border: 1px solid var(--border);">
+                    <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Solution Readability</div>
+                    <div id="portReadabilityStat" style="font-size: 1.4rem; font-weight: 700; color: var(--accent); margin-top: 4px;">0.0/100</div>
+                    <div id="portMilestonesStat" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">0 Milestones Unlocked</div>
+                </div>
+            </div>
+
+            <!-- Export History Section -->
+            <div style="margin-top: 16px;">
+                <h3 style="font-size: 0.95rem; color: var(--text); margin-bottom: 8px;">Recent Local Report Exports</h3>
+                <div id="portExportHistoryList" style="font-size: 0.85rem; color: var(--text-muted);">
+                    No exports generated yet.
                 </div>
             </div>
         </div>
@@ -2350,7 +2458,183 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             }
         }
 
-        // Initialize Coach, Revision, Goals, Roadmap, Daily Mission, and Workspace on window load
+        // Portfolio Management Functions (Milestone 6.3.18)
+        function toggleCustomDatePreset() {
+            const preset = document.getElementById("portPreset").value;
+            const row = document.getElementById("portCustomDateRow");
+            if (row) {
+                row.style.display = preset === "custom" ? "grid" : "none";
+            }
+        }
+
+        async function reloadPortfolioPreview() {
+            try {
+                const style = document.getElementById("portStyle") ? document.getElementById("portStyle").value : "developer_portfolio";
+                const preset = document.getElementById("portPreset") ? document.getElementById("portPreset").value : "all_time";
+                const startDate = document.getElementById("portStartDate") ? document.getElementById("portStartDate").value : "";
+                const endDate = document.getElementById("portEndDate") ? document.getElementById("portEndDate").value : "";
+                const name = document.getElementById("portLearnerName") ? document.getElementById("portLearnerName").value : "";
+                const title = document.getElementById("portTitle") ? document.getElementById("portTitle").value : "";
+
+                let url = `/api/portfolio/preview?report_style=${encodeURIComponent(style)}&date_preset=${encodeURIComponent(preset)}`;
+                if (preset === "custom" && startDate) {
+                    url += `&start_date=${encodeURIComponent(startDate)}`;
+                    if (endDate) url += `&end_date=${encodeURIComponent(endDate)}`;
+                }
+
+                const res = await fetch(url);
+                if (!res.ok) return;
+                const data = await res.json();
+                const report = data.report || data;
+
+                if (report.config) {
+                    if (document.getElementById("portLearnerName") && (!name || name === "Learner")) {
+                        document.getElementById("portLearnerName").value = report.config.learner_name || "Learner";
+                    }
+                    if (document.getElementById("portTitle") && (!title || title === "Developer Learning Portfolio")) {
+                        document.getElementById("portTitle").value = report.config.portfolio_title || "Developer Learning Portfolio";
+                    }
+                }
+
+                if (document.getElementById("portExecutiveSummary")) {
+                    document.getElementById("portExecutiveSummary").textContent = report.executive_summary || "No verified evidence recorded.";
+                }
+
+                if (report.coding_stats) {
+                    const cs = report.coding_stats;
+                    if (document.getElementById("portSolvedStat")) document.getElementById("portSolvedStat").textContent = cs.total_verified_solved;
+                    if (document.getElementById("portDifficultyBreakdown")) document.getElementById("portDifficultyBreakdown").textContent = `${cs.easy_count}E / ${cs.medium_count}M / ${cs.hard_count}H`;
+                }
+
+                if (report.dsa_mastery) {
+                    const dm = report.dsa_mastery;
+                    if (document.getElementById("portRoadmapProgressStat")) document.getElementById("portRoadmapProgressStat").textContent = `${dm.overall_roadmap_progress_pct}%`;
+                    if (document.getElementById("portProficientTopicsStat")) document.getElementById("portProficientTopicsStat").textContent = `${dm.proficient_topics_count} of ${dm.total_roadmap_topics} Topics Proficient`;
+                }
+
+                if (report.consistency) {
+                    const cn = report.consistency;
+                    if (document.getElementById("portConsistencyStat")) document.getElementById("portConsistencyStat").textContent = `${cn.active_streak_days} Days`;
+                    if (document.getElementById("portMissionsStat")) document.getElementById("portMissionsStat").textContent = `${cn.completed_missions_count} Missions Completed`;
+                }
+
+                if (report.solution_quality && report.goals) {
+                    const sq = report.solution_quality;
+                    const g = report.goals;
+                    if (document.getElementById("portReadabilityStat")) document.getElementById("portReadabilityStat").textContent = `${sq.average_readability_score}/100`;
+                    if (document.getElementById("portMilestonesStat")) document.getElementById("portMilestonesStat").textContent = `${g.unlocked_achievements ? g.unlocked_achievements.length : 0} Milestones Unlocked`;
+                }
+
+                reloadPortfolioHistory();
+            } catch (err) {
+                console.error("Failed to load portfolio preview:", err);
+            }
+        }
+
+        async function savePortfolioConfig() {
+            try {
+                const name = document.getElementById("portLearnerName").value.trim();
+                const title = document.getElementById("portTitle").value.trim();
+                const style = document.getElementById("portStyle").value;
+                const preset = document.getElementById("portPreset").value;
+                const startDate = document.getElementById("portStartDate").value;
+                const endDate = document.getElementById("portEndDate").value;
+
+                const payload = {
+                    learner_name: name || "Learner",
+                    portfolio_title: title || "Developer Learning Portfolio",
+                    report_style: style,
+                    date_range_preset: preset,
+                    start_date: preset === "custom" ? startDate : null,
+                    end_date: preset === "custom" ? endDate : null
+                };
+
+                const res = await fetch("/api/portfolio/config", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                if (res.ok) {
+                    showToast("Profile configuration saved successfully!", "success");
+                    reloadPortfolioPreview();
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Failed to save config", "error");
+                }
+            } catch (err) {
+                showToast("Error saving profile config", "error");
+            }
+        }
+
+        async function exportPortfolio(format) {
+            try {
+                const style = document.getElementById("portStyle").value;
+                const preset = document.getElementById("portPreset").value;
+                const startDate = document.getElementById("portStartDate").value;
+                const endDate = document.getElementById("portEndDate").value;
+                const name = document.getElementById("portLearnerName").value.trim();
+                const title = document.getElementById("portTitle").value.trim();
+
+                const payload = {
+                    format: format,
+                    report_style: style,
+                    date_range_preset: preset,
+                    start_date: preset === "custom" ? startDate : null,
+                    end_date: preset === "custom" ? endDate : null,
+                    learner_name: name,
+                    portfolio_title: title
+                };
+
+                const res = await fetch("/api/portfolio/generate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    showToast(`Exported ${data.filename} (${data.format.toUpperCase()})`, "success");
+                    reloadPortfolioHistory();
+                    if (data.download_url) {
+                        window.open(data.download_url, "_blank");
+                    }
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Export failed", "error");
+                }
+            } catch (err) {
+                showToast("Error generating export", "error");
+            }
+        }
+
+        async function reloadPortfolioHistory() {
+            try {
+                const res = await fetch("/api/portfolio/history?limit=5");
+                if (!res.ok) return;
+                const history = await res.json();
+                const container = document.getElementById("portExportHistoryList");
+                if (!container) return;
+
+                if (!history || history.length === 0) {
+                    container.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem;">No exported reports yet.</div>';
+                    return;
+                }
+
+                container.innerHTML = history.map(item => `
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                        <div>
+                            <span style="font-weight: 600; color: var(--text);">${item.filename}</span>
+                            <span style="color: var(--text-muted); font-size: 0.75rem; margin-left: 8px;">${item.generated_at ? item.generated_at.substring(0, 10) : ""}</span>
+                            <span class="status-badge" style="background: rgba(56, 189, 248, 0.2); color: var(--primary); font-size: 0.7rem; margin-left: 6px;">${item.format.toUpperCase()}</span>
+                        </div>
+                        <a href="/api/portfolio/export/${item.export_id}" class="btn btn-secondary btn-sm" download style="padding: 2px 8px; font-size: 0.75rem;">Download</a>
+                    </div>
+                `).join("");
+            } catch (err) {
+                console.error("Failed to load export history:", err);
+            }
+        }
+
+        // Initialize Coach, Revision, Goals, Roadmap, Daily Mission, Workspace, and Portfolio on window load
         window.addEventListener("DOMContentLoaded", () => {
             initCoach();
             reloadRevisionQueue();
@@ -2358,6 +2642,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             reloadRoadmapData();
             reloadDailyMission();
             openProblemInWorkspace("two-sum");
+            reloadPortfolioPreview();
         });
 
         // Close modal on outside click
@@ -3545,6 +3830,180 @@ def create_app(
         )
         from dataclasses import asdict
         return jsonify(asdict(cr))
+
+    # =========================================================================
+    # Personal Learning Portfolio & Progress Report Generator Endpoints (Milestone 6.3.18)
+    # =========================================================================
+
+    @app.route("/api/portfolio")
+    def api_portfolio_root():
+        """Retrieve default portfolio configuration and aggregated summary."""
+        mgr = PortfolioManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        report = mgr.aggregate_evidence()
+        from dataclasses import asdict
+        return jsonify({
+            "status": "ready",
+            "report": asdict(report),
+        })
+
+    @app.route("/api/portfolio/preview")
+    def api_portfolio_preview():
+        """Generate dynamic portfolio preview with applied style and date filters."""
+        style = request.args.get("report_style", "developer_portfolio")
+        preset = request.args.get("date_preset", "all_time")
+        start_date = request.args.get("start_date")
+        end_date = request.args.get("end_date")
+
+        mgr = PortfolioManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        saved_cfg = mgr.get_saved_config()
+        cfg = PortfolioConfig(
+            learner_name=saved_cfg.learner_name,
+            portfolio_title=saved_cfg.portfolio_title,
+            introduction=saved_cfg.introduction,
+            primary_language=saved_cfg.primary_language,
+            learning_objectives=saved_cfg.learning_objectives,
+            skills_to_highlight=saved_cfg.skills_to_highlight,
+            report_style=style,
+            date_range_preset=preset,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        report = mgr.aggregate_evidence(config=cfg)
+        from dataclasses import asdict
+        return jsonify({
+            "config": asdict(cfg),
+            "report": asdict(report),
+        })
+
+    @app.route("/api/portfolio/config", methods=["POST"])
+    def api_portfolio_save_config():
+        """Update and persist learner profile and portfolio generation settings."""
+        req_data = request.get_json(silent=True) or {}
+        mgr = PortfolioManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        existing = mgr.get_saved_config()
+        cfg = PortfolioConfig(
+            learner_name=req_data.get("learner_name", existing.learner_name),
+            portfolio_title=req_data.get("portfolio_title", existing.portfolio_title),
+            introduction=req_data.get("introduction", existing.introduction),
+            primary_language=req_data.get("primary_language", existing.primary_language),
+            learning_objectives=req_data.get("learning_objectives", existing.learning_objectives),
+            skills_to_highlight=req_data.get("skills_to_highlight", existing.skills_to_highlight),
+            report_style=req_data.get("report_style", existing.report_style),
+            date_range_preset=req_data.get("date_range_preset", existing.date_range_preset),
+            start_date=req_data.get("start_date", existing.start_date),
+            end_date=req_data.get("end_date", existing.end_date),
+        )
+        saved = mgr.save_config(cfg)
+        from dataclasses import asdict
+        return jsonify({
+            "message": "Portfolio configuration saved successfully",
+            "config": asdict(saved),
+        })
+
+    @app.route("/api/portfolio/generate", methods=["POST"])
+    def api_portfolio_generate():
+        """Generate and export a report in Markdown, JSON, or HTML."""
+        req_data = request.get_json(silent=True) or {}
+        format_type = req_data.get("format", "markdown")
+        style = req_data.get("report_style", "developer_portfolio")
+        preset = req_data.get("date_range_preset", "all_time")
+        start_date = req_data.get("start_date")
+        end_date = req_data.get("end_date")
+        learner_name = req_data.get("learner_name")
+        portfolio_title = req_data.get("portfolio_title")
+        custom_filename = req_data.get("filename")
+
+        mgr = PortfolioManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        saved_cfg = mgr.get_saved_config()
+        cfg = PortfolioConfig(
+            learner_name=learner_name or saved_cfg.learner_name,
+            portfolio_title=portfolio_title or saved_cfg.portfolio_title,
+            introduction=saved_cfg.introduction,
+            primary_language=saved_cfg.primary_language,
+            learning_objectives=saved_cfg.learning_objectives,
+            skills_to_highlight=saved_cfg.skills_to_highlight,
+            report_style=style,
+            date_range_preset=preset,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        try:
+            report = mgr.aggregate_evidence(config=cfg)
+            export_record = mgr.export_portfolio(
+                report=report,
+                format_type=format_type,
+                custom_filename=custom_filename,
+            )
+            export_record["download_url"] = f"/api/portfolio/export/{export_record['export_id']}"
+            return jsonify(export_record), 201
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/portfolio/history")
+    def api_portfolio_history():
+        """Fetch previously generated portfolio exports."""
+        try:
+            limit = int(request.args.get("limit", 10))
+        except ValueError:
+            limit = 10
+
+        mgr = PortfolioManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        history = mgr.list_exports(limit=limit)
+        return jsonify(history)
+
+    @app.route("/api/portfolio/export/<export_id>")
+    def api_portfolio_download_export(export_id: str):
+        """Safely download an exported report file."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", export_id):
+            return jsonify({"error": "Invalid export_id format"}), 400
+
+        mgr = PortfolioManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        result = mgr.get_export_file(export_id)
+        if not result:
+            return jsonify({"error": f"Export '{export_id}' not found"}), 404
+
+        filename, filepath_str, fmt = result
+        filepath = Path(filepath_str).resolve()
+        exports_dir = mgr.exports_dir.resolve()
+
+        # Path traversal guard
+        if not str(filepath).startswith(str(exports_dir)):
+            return jsonify({"error": "Unauthorized file access"}), 403
+
+        if not filepath.is_file():
+            return jsonify({"error": "File not found on disk"}), 404
+
+        mimetype_map = {
+            "markdown": "text/markdown; charset=utf-8",
+            "md": "text/markdown; charset=utf-8",
+            "json": "application/json; charset=utf-8",
+            "html": "text/html; charset=utf-8",
+        }
+        mime = mimetype_map.get(fmt, "text/plain; charset=utf-8")
+        return send_file(
+            filepath,
+            mimetype=mime,
+            as_attachment=True,
+            download_name=filename,
+        )
 
     return app
 

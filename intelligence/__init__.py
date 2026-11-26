@@ -16,6 +16,16 @@ from intelligence.coach import (
     ProblemCoachingGuide,
     ProgressiveHint,
 )
+from intelligence.daily_mission import (
+    DailyMission,
+    DailyMissionAnalytics,
+    DailyMissionManager,
+    DailyMissionTask,
+    MissionStatus,
+    MissionSummaryReport,
+    MissionTaskStatus,
+    MissionTaskType,
+)
 from intelligence.goals import (
     GoalPlanRecommendation,
     GoalStatus,
@@ -131,4 +141,12 @@ __all__ = [
     "RoadmapOverviewReport",
     "ROADMAP_STAGES_CONFIG",
     "ROADMAP_TOPIC_NODES",
+    "DailyMissionManager",
+    "DailyMission",
+    "DailyMissionTask",
+    "MissionStatus",
+    "MissionTaskStatus",
+    "MissionTaskType",
+    "MissionSummaryReport",
+    "DailyMissionAnalytics",
 ]

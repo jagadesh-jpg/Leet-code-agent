@@ -20,6 +20,16 @@ from flask import Flask, Response, jsonify, render_template_string, request
 from dashboard import get_dashboard_data, _get_learning_intelligence_data
 from intelligence.adaptive import AdaptiveLearningEngine
 from intelligence.coach import OfflineCodingCoach
+from intelligence.daily_mission import (
+    DailyMission,
+    DailyMissionAnalytics,
+    DailyMissionManager,
+    DailyMissionTask,
+    MissionStatus,
+    MissionSummaryReport,
+    MissionTaskStatus,
+    MissionTaskType,
+)
 from intelligence.goals import (
     GoalPlanRecommendation,
     GoalStatus,
@@ -773,6 +783,88 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             <!-- 5 Stages Roadmap View -->
             <div id="roadmapStagesContainer" style="display: flex; flex-direction: column; gap: 16px;">
                 <div style="text-align: center; color: var(--text-muted); padding: 16px;">Loading DSA skill stages...</div>
+            </div>
+        </div>
+
+        <!-- Daily Learning Mission & Focus Mode (Milestone 6.3.15) -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Daily Learning Mission & Focus Mode</h2>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-secondary btn-sm" onclick="reloadDailyMission()">Refresh Mission</button>
+                    <button class="btn btn-primary btn-sm" onclick="generateNewMission()">Generate Mission</button>
+                </div>
+            </div>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px;">
+                Personalized, bite-sized daily practice missions synthesizing overdue spaced revisions, active goals, and roadmap advancement into a 30-45 minute guided focus workflow.
+            </p>
+
+            <div class="grid-stats" style="margin-bottom: 16px;">
+                <div class="stat-card" style="padding: 14px;">
+                    <div class="label">Mission Status</div>
+                    <div class="value" id="missionStatusText" style="font-size: 1.4rem; color: #38bdf8; text-transform: uppercase;">NONE</div>
+                    <div class="subtext" id="missionDateSub">Today</div>
+                </div>
+                <div class="stat-card" style="padding: 14px;">
+                    <div class="label">Completion</div>
+                    <div class="value" id="missionProgressPct" style="font-size: 1.4rem; color: #86efac;">0%</div>
+                    <div class="subtext" id="missionTasksRatio">0 of 0 tasks completed</div>
+                </div>
+                <div class="stat-card" style="padding: 14px;">
+                    <div class="label">Estimated Time</div>
+                    <div class="value" id="missionEstTime" style="font-size: 1.4rem; color: #fde047;">0 min</div>
+                    <div class="subtext">Daily practice duration</div>
+                </div>
+                <div class="stat-card" style="padding: 14px;">
+                    <div class="label">Practice Streak</div>
+                    <div class="value" id="missionStreakDays" style="font-size: 1.4rem; color: #c084fc;">0 Days</div>
+                    <div class="subtext">Consecutive daily missions</div>
+                </div>
+            </div>
+
+            <!-- Focus Mode Active Task Banner -->
+            <div id="focusModeContainer" style="background: rgba(15, 23, 42, 0.8); border: 2px solid var(--primary); border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                    <div>
+                        <span style="font-size: 0.75rem; background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid #0284c7; padding: 2px 8px; border-radius: 9999px; text-transform: uppercase; font-weight: 600;">Current Focus Task</span>
+                        <h3 id="currentTaskTitle" style="font-size: 1.1rem; color: var(--text); margin-top: 6px;">No Active Mission</h3>
+                        <p id="currentTaskDesc" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">Generate or start today's mission to activate Focus Mode.</p>
+                    </div>
+                    <div id="missionActionButtons" style="display: flex; gap: 8px;">
+                        <button class="btn btn-success btn-sm" id="btnStartMission" onclick="startDailyMissionAction()">Start Mission</button>
+                    </div>
+                </div>
+                <div id="currentTaskMeta" style="font-size: 0.8rem; color: var(--text-muted); display: flex; gap: 16px; border-top: 1px solid var(--border); padding-top: 8px; margin-top: 8px;">
+                    <span id="currentTaskTopic">Topic: None</span>
+                    <span id="currentTaskDiff">Difficulty: None</span>
+                    <span id="currentTaskEst">Est: 0 min</span>
+                </div>
+            </div>
+
+            <!-- Task Sequence Table -->
+            <h3 style="font-size: 1rem; color: var(--text); margin-bottom: 10px;">Mission Task Sequence</h3>
+            <table style="margin-bottom: 20px;">
+                <thead>
+                    <tr>
+                        <th style="width: 50px;">#</th>
+                        <th>Task Title</th>
+                        <th>Type</th>
+                        <th>Topic</th>
+                        <th>Diff</th>
+                        <th>Est</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="missionTasksTableBody">
+                    <tr><td colspan="8" style="text-align: center; color: var(--text-muted);">No mission loaded.</td></tr>
+                </tbody>
+            </table>
+
+            <!-- Mission History Summary -->
+            <h3 style="font-size: 1rem; color: var(--text); margin-bottom: 10px;">Recent Missions History</h3>
+            <div id="missionHistoryList" style="display: flex; flex-direction: column; gap: 8px;">
+                <div style="color: var(--text-muted); font-size: 0.85rem;">No historical missions recorded.</div>
             </div>
         </div>
 
@@ -1545,12 +1637,275 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             }
         }
 
-        // Initialize Coach, Revision, Goals, and Roadmap on window load
+        // Daily Mission & Focus Mode Functions (Milestone 6.3.15)
+        let activeMissionData = null;
+
+        async function reloadDailyMission() {
+            try {
+                const [missionRes, historyRes, analyticsRes] = await Promise.all([
+                    fetch("/api/daily-mission/current"),
+                    fetch("/api/daily-mission/history"),
+                    fetch("/api/daily-mission/analytics")
+                ]);
+
+                const mission = await missionRes.json();
+                const history = await historyRes.json();
+                const analytics = await analyticsRes.json();
+
+                activeMissionData = mission;
+
+                // Stats
+                const statusStr = mission ? mission.status : "NONE";
+                document.getElementById("missionStatusText").innerText = statusStr;
+                document.getElementById("missionDateSub").innerText = mission ? mission.mission_date : "Today";
+                document.getElementById("missionProgressPct").innerText = (mission ? mission.completion_percentage : 0) + "%";
+                document.getElementById("missionTasksRatio").innerText = `${mission ? mission.completed_tasks_count : 0} of ${mission ? mission.total_tasks : 0} tasks completed`;
+                document.getElementById("missionEstTime").innerText = (mission ? mission.estimated_duration_min : 0) + " min";
+                document.getElementById("missionStreakDays").innerText = (analytics.current_streak_days || 0) + " Days";
+
+                // Focus Mode Card
+                const btnContainer = document.getElementById("missionActionButtons");
+                btnContainer.innerHTML = "";
+
+                if (!mission) {
+                    document.getElementById("currentTaskTitle").innerText = "No Active Mission";
+                    document.getElementById("currentTaskDesc").innerText = "Click 'Generate Mission' above to assemble your personalized daily practice.";
+                    btnContainer.innerHTML = '<button class="btn btn-primary btn-sm" onclick="generateNewMission()">Generate Mission</button>';
+                } else if (mission.status === "completed") {
+                    document.getElementById("currentTaskTitle").innerText = "Mission Accomplished! 🏆";
+                    document.getElementById("currentTaskDesc").innerText = `Great job! All ${mission.total_tasks} tasks completed. Practice streak is maintained.`;
+                    btnContainer.innerHTML = '<button class="btn btn-secondary btn-sm" onclick="generateNewMission(true)">New Mission</button>';
+                } else {
+                    // Mission is created, in_progress, or paused
+                    const curTask = mission.current_task;
+                    if (curTask) {
+                        document.getElementById("currentTaskTitle").innerText = `${curTask.sequence_order}. ${curTask.title}`;
+                        document.getElementById("currentTaskDesc").innerText = curTask.description + " — " + curTask.selection_reason;
+                        document.getElementById("currentTaskTopic").innerText = "Topic: " + (curTask.topic || "General");
+                        document.getElementById("currentTaskDiff").innerText = "Difficulty: " + (curTask.difficulty || "Easy");
+                        document.getElementById("currentTaskEst").innerText = `Est: ${curTask.estimated_duration_min} min`;
+
+                        if (mission.status === "paused") {
+                            btnContainer.innerHTML = `
+                                <button class="btn btn-success btn-sm" onclick="resumeMissionAction()">Resume Mission</button>
+                                <button class="btn btn-danger btn-sm" onclick="cancelMissionAction()">Cancel</button>
+                            `;
+                        } else if (curTask.status === "in_progress") {
+                            btnContainer.innerHTML = `
+                                <button class="btn btn-success btn-sm" onclick="completeTaskAction('${curTask.task_id}')">Complete Task</button>
+                                <button class="btn btn-secondary btn-sm" onclick="skipTaskAction('${curTask.task_id}')">Skip Task</button>
+                                <button class="btn btn-secondary btn-sm" onclick="pauseMissionAction()">Pause</button>
+                            `;
+                        } else {
+                            btnContainer.innerHTML = `
+                                <button class="btn btn-primary btn-sm" onclick="startTaskAction('${curTask.task_id}')">Start Task</button>
+                                <button class="btn btn-secondary btn-sm" onclick="skipTaskAction('${curTask.task_id}')">Skip</button>
+                                <button class="btn btn-secondary btn-sm" onclick="pauseMissionAction()">Pause</button>
+                            `;
+                        }
+                    } else {
+                        document.getElementById("currentTaskTitle").innerText = mission.title;
+                        document.getElementById("currentTaskDesc").innerText = mission.summary;
+                        btnContainer.innerHTML = `
+                            <button class="btn btn-success btn-sm" onclick="startDailyMissionAction()">Start Mission</button>
+                        `;
+                    }
+                }
+
+                // Tasks table
+                const tbody = document.getElementById("missionTasksTableBody");
+                tbody.innerHTML = "";
+                if (!mission || !mission.tasks || mission.tasks.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">(No mission tasks loaded)</td></tr>';
+                } else {
+                    mission.tasks.forEach(t => {
+                        let badgeColor = "var(--text-muted)";
+                        if (t.status === "completed") badgeColor = "#4ade80";
+                        else if (t.status === "in_progress") badgeColor = "#38bdf8";
+                        else if (t.status === "skipped") badgeColor = "#fca5a5";
+
+                        const tr = document.createElement("tr");
+                        tr.innerHTML = `
+                            <td>${t.sequence_order}</td>
+                            <td style="font-weight: 600; color: var(--text);">${escapeHtml(t.title)}</td>
+                            <td style="color: var(--text-muted); font-size: 0.8rem;">${escapeHtml(t.task_type.replace(/_/g, ' '))}</td>
+                            <td>${escapeHtml(t.topic || '-')}</td>
+                            <td>${t.difficulty ? `<span class="badge-${t.difficulty.toLowerCase()}">${t.difficulty}</span>` : '-'}</td>
+                            <td>${t.estimated_duration_min}m</td>
+                            <td><span style="color: ${badgeColor}; font-weight: 600; text-transform: uppercase; font-size: 0.75rem;">${t.status}</span></td>
+                            <td>
+                                ${t.status === "pending" ? `<button class="btn btn-primary btn-sm" onclick="startTaskAction('${t.task_id}')">Start</button>` : ''}
+                                ${t.status === "in_progress" ? `<button class="btn btn-success btn-sm" onclick="completeTaskAction('${t.task_id}')">Complete</button>` : ''}
+                                ${t.status !== "completed" && t.status !== "skipped" ? `<button class="btn btn-secondary btn-sm" onclick="skipTaskAction('${t.task_id}')">Skip</button>` : ''}
+                            </td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                }
+
+                // History rendering
+                const histList = document.getElementById("missionHistoryList");
+                histList.innerHTML = "";
+                if (!history || history.length === 0) {
+                    histList.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem;">No past missions found.</div>';
+                } else {
+                    history.forEach(m => {
+                        const hItem = document.createElement("div");
+                        hItem.style.cssText = "display: flex; justify-content: space-between; align-items: center; background: rgba(30, 41, 59, 0.5); padding: 8px 12px; border-radius: 6px; font-size: 0.85rem;";
+                        hItem.innerHTML = `
+                            <div>
+                                <span style="font-weight: 600; color: var(--text);">${escapeHtml(m.mission_date)}: ${escapeHtml(m.title)}</span>
+                                <span style="color: var(--text-muted); margin-left: 8px;">(${m.completed_tasks_count}/${m.total_tasks} tasks)</span>
+                            </div>
+                            <span style="font-size: 0.75rem; text-transform: uppercase; color: ${m.status === 'completed' ? '#4ade80' : 'var(--text-muted)'};">${m.status}</span>
+                        `;
+                        histList.appendChild(hItem);
+                    });
+                }
+
+            } catch (err) {
+                console.error("Error loading mission data:", err);
+            }
+        }
+
+        async function generateNewMission(force = false) {
+            try {
+                const res = await fetch("/api/daily-mission/generate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ force_new: force })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showAlert("Daily mission generated successfully!");
+                    reloadDailyMission();
+                } else {
+                    showAlert(data.error || "Failed to generate mission", false);
+                }
+            } catch (err) {
+                showAlert("Error generating mission", false);
+            }
+        }
+
+        async function startDailyMissionAction() {
+            try {
+                const res = await fetch("/api/daily-mission/start", { method: "POST" });
+                const data = await res.json();
+                if (res.ok) {
+                    showAlert("Focus Mode Activated: Mission started!");
+                    reloadDailyMission();
+                } else {
+                    showAlert(data.error || "Failed to start mission", false);
+                }
+            } catch (err) {
+                showAlert("Error starting mission", false);
+            }
+        }
+
+        async function startTaskAction(taskId) {
+            try {
+                const res = await fetch(`/api/daily-mission/task/${taskId}/start`, { method: "POST" });
+                const data = await res.json();
+                if (res.ok) {
+                    showAlert("Task activated!");
+                    reloadDailyMission();
+                } else {
+                    showAlert(data.error || "Failed to start task", false);
+                }
+            } catch (err) {
+                showAlert("Error starting task", false);
+            }
+        }
+
+        async function completeTaskAction(taskId) {
+            try {
+                const res = await fetch(`/api/daily-mission/task/${taskId}/complete`, { method: "POST" });
+                const data = await res.json();
+                if (res.ok) {
+                    showAlert("Task completed! Progress recorded.");
+                    reloadDailyMission();
+                } else {
+                    showAlert(data.error || "Failed to complete task", false);
+                }
+            } catch (err) {
+                showAlert("Error completing task", false);
+            }
+        }
+
+        async function skipTaskAction(taskId) {
+            const reason = prompt("Reason for skipping task:", "Practicing other topic");
+            if (reason === null) return;
+            try {
+                const res = await fetch(`/api/daily-mission/task/${taskId}/skip`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ reason: reason })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showAlert("Task skipped.");
+                    reloadDailyMission();
+                } else {
+                    showAlert(data.error || "Failed to skip task", false);
+                }
+            } catch (err) {
+                showAlert("Error skipping task", false);
+            }
+        }
+
+        async function pauseMissionAction() {
+            try {
+                const res = await fetch("/api/daily-mission/pause", { method: "POST" });
+                const data = await res.json();
+                if (res.ok) {
+                    showAlert("Mission paused.");
+                    reloadDailyMission();
+                } else {
+                    showAlert(data.error || "Failed to pause mission", false);
+                }
+            } catch (err) {
+                showAlert("Error pausing mission", false);
+            }
+        }
+
+        async function resumeMissionAction() {
+            try {
+                const res = await fetch("/api/daily-mission/resume", { method: "POST" });
+                const data = await res.json();
+                if (res.ok) {
+                    showAlert("Mission resumed!");
+                    reloadDailyMission();
+                } else {
+                    showAlert(data.error || "Failed to resume mission", false);
+                }
+            } catch (err) {
+                showAlert("Error resuming mission", false);
+            }
+        }
+
+        async function cancelMissionAction() {
+            if (!confirm("Are you sure you want to cancel today's mission?")) return;
+            try {
+                const res = await fetch("/api/daily-mission/cancel", { method: "POST" });
+                const data = await res.json();
+                if (res.ok) {
+                    showAlert("Mission cancelled.");
+                    reloadDailyMission();
+                } else {
+                    showAlert(data.error || "Failed to cancel mission", false);
+                }
+            } catch (err) {
+                showAlert("Error cancelling mission", false);
+            }
+        }
+
+        // Initialize Coach, Revision, Goals, Roadmap, and Daily Mission on window load
         window.addEventListener("DOMContentLoaded", () => {
             initCoach();
             reloadRevisionQueue();
             reloadGoalsAndMilestones();
             reloadRoadmapData();
+            reloadDailyMission();
         });
 
         // Close modal on outside click
@@ -2259,6 +2614,226 @@ def create_app(
         recs = engine.generate_recommendations(limit=limit)
         from dataclasses import asdict
         return jsonify([asdict(r) for r in recs])
+
+    # =========================================================================
+    # Daily Learning Mission & Focus Mode Endpoints (Milestone 6.3.15)
+    # =========================================================================
+
+    @app.route("/api/daily-mission")
+    @app.route("/api/daily-mission/current")
+    def api_get_daily_mission():
+        """Retrieve the current daily mission and active focus task."""
+        mgr = DailyMissionManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+            language="python",
+        )
+        mission = mgr.get_today_mission()
+        if not mission:
+            # Auto-generate if none exists
+            mission = mgr.generate_mission()
+        from dataclasses import asdict
+        d = asdict(mission)
+        d["completion_percentage"] = mission.completion_percentage
+        d["current_task"] = asdict(mission.current_task) if mission.current_task else None
+        return jsonify(d)
+
+    @app.route("/api/daily-mission/generate", methods=["POST"])
+    def api_generate_daily_mission():
+        """Generate a personalized daily mission."""
+        req_data = request.get_json(silent=True) or {}
+        force_new = bool(req_data.get("force_new", False))
+        duration = int(req_data.get("target_duration_min", 45))
+        max_tasks = int(req_data.get("max_tasks", 3))
+
+        mgr = DailyMissionManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+            language="python",
+        )
+        mission = mgr.generate_mission(
+            target_duration_min=duration,
+            max_tasks=max_tasks,
+            force_new=force_new,
+        )
+        from dataclasses import asdict
+        d = asdict(mission)
+        d["completion_percentage"] = mission.completion_percentage
+        d["current_task"] = asdict(mission.current_task) if mission.current_task else None
+        return jsonify(d), 201
+
+    @app.route("/api/daily-mission/start", methods=["POST"])
+    def api_start_daily_mission():
+        """Start the daily mission and its first task."""
+        req_data = request.get_json(silent=True) or {}
+        mission_id = req_data.get("mission_id")
+
+        mgr = DailyMissionManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+            language="python",
+        )
+        try:
+            mission = mgr.start_mission(mission_id)
+            from dataclasses import asdict
+            d = asdict(mission)
+            d["completion_percentage"] = mission.completion_percentage
+            d["current_task"] = asdict(mission.current_task) if mission.current_task else None
+            return jsonify(d)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/daily-mission/task/<task_id>/start", methods=["POST"])
+    def api_start_daily_mission_task(task_id: str):
+        """Set task to in_progress."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", task_id):
+            return jsonify({"error": "Invalid task identifier format"}), 400
+
+        mgr = DailyMissionManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+            language="python",
+        )
+        try:
+            task = mgr.start_task(task_id)
+            from dataclasses import asdict
+            return jsonify(asdict(task))
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/daily-mission/task/<task_id>/complete", methods=["POST"])
+    def api_complete_daily_mission_task(task_id: str):
+        """Mark task completed and advance focus mode."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", task_id):
+            return jsonify({"error": "Invalid task identifier format"}), 400
+
+        mgr = DailyMissionManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+            language="python",
+        )
+        try:
+            task, mission = mgr.complete_task(task_id)
+            from dataclasses import asdict
+            d_mission = asdict(mission)
+            d_mission["completion_percentage"] = mission.completion_percentage
+            d_mission["current_task"] = asdict(mission.current_task) if mission.current_task else None
+            return jsonify({
+                "task": asdict(task),
+                "mission": d_mission,
+            })
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/daily-mission/task/<task_id>/skip", methods=["POST"])
+    def api_skip_daily_mission_task(task_id: str):
+        """Skip task with reason and advance focus mode."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", task_id):
+            return jsonify({"error": "Invalid task identifier format"}), 400
+
+        req_data = request.get_json(silent=True) or {}
+        reason = req_data.get("reason", "Skipped by user")
+
+        mgr = DailyMissionManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+            language="python",
+        )
+        try:
+            task, mission = mgr.skip_task(task_id, reason=reason)
+            from dataclasses import asdict
+            d_mission = asdict(mission)
+            d_mission["completion_percentage"] = mission.completion_percentage
+            d_mission["current_task"] = asdict(mission.current_task) if mission.current_task else None
+            return jsonify({
+                "task": asdict(task),
+                "mission": d_mission,
+            })
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/daily-mission/pause", methods=["POST"])
+    def api_pause_daily_mission():
+        """Pause currently running mission."""
+        mgr = DailyMissionManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+            language="python",
+        )
+        try:
+            mission = mgr.pause_mission()
+            from dataclasses import asdict
+            d = asdict(mission)
+            d["completion_percentage"] = mission.completion_percentage
+            d["current_task"] = asdict(mission.current_task) if mission.current_task else None
+            return jsonify(d)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/daily-mission/resume", methods=["POST"])
+    def api_resume_daily_mission():
+        """Resume paused mission."""
+        mgr = DailyMissionManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+            language="python",
+        )
+        try:
+            mission = mgr.resume_mission()
+            from dataclasses import asdict
+            d = asdict(mission)
+            d["completion_percentage"] = mission.completion_percentage
+            d["current_task"] = asdict(mission.current_task) if mission.current_task else None
+            return jsonify(d)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/daily-mission/cancel", methods=["POST"])
+    def api_cancel_daily_mission():
+        """Cancel daily mission."""
+        mgr = DailyMissionManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+            language="python",
+        )
+        try:
+            mission = mgr.cancel_mission()
+            from dataclasses import asdict
+            d = asdict(mission)
+            d["completion_percentage"] = mission.completion_percentage
+            d["current_task"] = asdict(mission.current_task) if mission.current_task else None
+            return jsonify(d)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/daily-mission/history")
+    def api_daily_mission_history():
+        """Fetch mission history."""
+        try:
+            limit = int(request.args.get("limit", 10))
+        except ValueError:
+            limit = 10
+
+        mgr = DailyMissionManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+            language="python",
+        )
+        history = mgr.list_mission_history(limit=limit)
+        from dataclasses import asdict
+        return jsonify([asdict(m) for m in history])
+
+    @app.route("/api/daily-mission/analytics")
+    def api_daily_mission_analytics():
+        """Fetch daily mission aggregated analytics."""
+        mgr = DailyMissionManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+            language="python",
+        )
+        analytics = mgr.get_analytics()
+        from dataclasses import asdict
+        return jsonify(asdict(analytics))
 
     return app
 

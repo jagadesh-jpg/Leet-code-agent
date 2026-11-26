@@ -67,6 +67,13 @@ from intelligence.roadmap import (
     TopicRoadmapNode,
 )
 from intelligence.selector import ProblemScoreBreakdown, ProblemSelector
+from intelligence.workspace import (
+    DEFAULT_STARTER_CODE,
+    ProblemWorkspaceContext,
+    WorkspaceDraft,
+    WorkspaceManager,
+    WorkspaceRunResult,
+)
 from intelligence.topics import (
     CURATED_PROBLEM_TOPICS,
     STANDARD_TOPICS,
@@ -149,4 +156,9 @@ __all__ = [
     "MissionTaskType",
     "MissionSummaryReport",
     "DailyMissionAnalytics",
+    "WorkspaceManager",
+    "ProblemWorkspaceContext",
+    "WorkspaceDraft",
+    "WorkspaceRunResult",
+    "DEFAULT_STARTER_CODE",
 ]

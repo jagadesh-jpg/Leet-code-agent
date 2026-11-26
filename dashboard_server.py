@@ -60,6 +60,12 @@ from intelligence.tracker import (
     SessionStatus,
     SessionTracker,
 )
+from intelligence.workspace import (
+    ProblemWorkspaceContext,
+    WorkspaceDraft,
+    WorkspaceManager,
+    WorkspaceRunResult,
+)
 from problems import load_problems
 import store
 
@@ -865,6 +871,75 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             <h3 style="font-size: 1rem; color: var(--text); margin-bottom: 10px;">Recent Missions History</h3>
             <div id="missionHistoryList" style="display: flex; flex-direction: column; gap: 8px;">
                 <div style="color: var(--text-muted); font-size: 0.85rem;">No historical missions recorded.</div>
+            </div>
+        </div>
+
+        <!-- Mission-Integrated Coding Workspace (Milestone 6.3.16) -->
+        <div class="card" id="codingWorkspaceCard">
+            <div class="card-header">
+                <h2>Mission-Integrated Coding Workspace</h2>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-secondary btn-sm" onclick="returnToDailyMission()">Focus Mode</button>
+                    <button class="btn btn-success btn-sm" id="btnConfirmTaskCompletion" style="display: none;" onclick="confirmTaskCompletionAction()">Confirm Task Completion</button>
+                </div>
+            </div>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px;">
+                Local-first coding environment connected directly to Daily Mission tasks. Edit solutions, run local test suites with UnifiedJudge, view diagnostic errors, and receive coach feedback.
+            </p>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                <!-- Problem Context Panel -->
+                <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border); border-radius: 8px; padding: 14px; max-height: 480px; overflow-y: auto;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                        <h3 id="wsProblemTitle" style="color: var(--text); font-size: 1.05rem;">Select a Problem</h3>
+                        <span id="wsProblemDiff" class="badge-easy" style="display: none;">Easy</span>
+                    </div>
+                    <div id="wsProblemMeta" style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 10px;">
+                        <span id="wsProblemTopics">Topics: -</span>
+                    </div>
+                    <div id="wsTaskReasonBanner" style="display: none; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 6px; padding: 8px; font-size: 0.8rem; color: #7dd3fc; margin-bottom: 12px;">
+                    </div>
+                    <div id="wsProblemDesc" style="font-size: 0.85rem; color: var(--text); line-height: 1.5; white-space: pre-wrap; margin-bottom: 14px;">
+                        Select a problem from your Daily Mission tasks above, or choose one to start solving.
+                    </div>
+                    <div id="wsExamplesContainer" style="font-size: 0.8rem; color: var(--text-muted);">
+                    </div>
+                </div>
+
+                <!-- Code Editor Panel -->
+                <div style="display: flex; flex-direction: column;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <label style="font-size: 0.8rem; color: var(--text-muted);">Language:</label>
+                            <select id="wsLanguageSelect" onchange="switchWorkspaceLanguage()" style="background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 4px 8px; font-size: 0.85rem;">
+                                <option value="python">Python</option>
+                                <option value="c">C</option>
+                                <option value="cpp">C++</option>
+                                <option value="java">Java</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; gap: 6px;">
+                            <button class="btn btn-secondary btn-sm" onclick="saveCurrentDraft()">Save Draft</button>
+                            <button class="btn btn-primary btn-sm" onclick="runWorkspaceCode()">Run Local Tests</button>
+                        </div>
+                    </div>
+                    <textarea id="wsCodeEditor" spellcheck="false" style="flex: 1; min-height: 400px; background: #090d16; border: 1px solid var(--border); border-radius: 8px; color: #f8fafc; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.85rem; padding: 12px; resize: vertical; line-height: 1.4;"></textarea>
+                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 6px; display: flex; justify-content: space-between;">
+                        <span id="wsDraftSavedStatus">Draft auto-loaded</span>
+                        <span>Ctrl+Enter to Run</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Execution Results Panel -->
+            <div id="wsResultCard" style="display: none; background: rgba(15, 23, 42, 0.8); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <h3 style="font-size: 0.95rem; color: var(--text);" id="wsResultTitle">Test Execution Results</h3>
+                    <span id="wsResultStatusBadge" style="font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 9999px; text-transform: uppercase;"></span>
+                </div>
+                <div id="wsResultFeedback" style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px;"></div>
+                <div id="wsResultDiagnostics" style="font-size: 0.8rem; background: #000; border-radius: 6px; padding: 8px; font-family: monospace; color: #fca5a5; white-space: pre-wrap; display: none;"></div>
+                <div id="wsCoachGuidance" style="font-size: 0.8rem; color: #93c5fd; background: rgba(59, 130, 246, 0.1); border-left: 3px solid #38bdf8; padding: 8px; margin-top: 8px; display: none;"></div>
             </div>
         </div>
 
@@ -1899,13 +1974,222 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             }
         }
 
-        // Initialize Coach, Revision, Goals, Roadmap, and Daily Mission on window load
+        // Workspace Integration (Milestone 6.3.16)
+        let activeWorkspacePid = "two-sum";
+        let activeWorkspaceMissionId = null;
+        let activeWorkspaceTaskId = null;
+        let lastWorkspaceRunId = null;
+
+        async function openProblemInWorkspace(problemId, missionId = null, taskId = null) {
+            activeWorkspacePid = problemId;
+            activeWorkspaceMissionId = missionId;
+            activeWorkspaceTaskId = taskId;
+            lastWorkspaceRunId = null;
+
+            document.getElementById("btnConfirmTaskCompletion").style.display = "none";
+            document.getElementById("wsResultCard").style.display = "none";
+
+            // Scroll down to workspace card
+            document.getElementById("codingWorkspaceCard").scrollIntoView({ behavior: 'smooth' });
+
+            const lang = document.getElementById("wsLanguageSelect").value || "python";
+
+            try {
+                let url = `/api/workspace/problem/${problemId}`;
+                if (missionId && taskId) {
+                    url += `?mission_id=${missionId}&task_id=${taskId}`;
+                }
+                const [ctxRes, draftRes] = await Promise.all([
+                    fetch(url),
+                    fetch(`/api/workspace/draft/${problemId}?language=${lang}`)
+                ]);
+
+                const ctx = await ctxRes.json();
+                const draft = await draftRes.json();
+
+                // Populate Context Panel
+                document.getElementById("wsProblemTitle").innerText = ctx.title || problemId;
+                const diffBadge = document.getElementById("wsProblemDiff");
+                diffBadge.className = `badge-${(ctx.difficulty || "medium").toLowerCase()}`;
+                diffBadge.innerText = ctx.difficulty || "Medium";
+                diffBadge.style.display = "inline-block";
+                document.getElementById("wsProblemTopics").innerText = "Topics: " + (ctx.topics || []).join(", ");
+
+                const reasonBanner = document.getElementById("wsTaskReasonBanner");
+                if (ctx.task_selection_reason) {
+                    reasonBanner.innerText = "Mission Goal: " + ctx.task_selection_reason;
+                    reasonBanner.style.display = "block";
+                } else {
+                    reasonBanner.style.display = "none";
+                }
+
+                document.getElementById("wsProblemDesc").innerText = ctx.description || "No description.";
+
+                const exContainer = document.getElementById("wsExamplesContainer");
+                exContainer.innerHTML = "";
+                if (ctx.examples && ctx.examples.length > 0) {
+                    exContainer.innerHTML = "<strong style='color: var(--text);'>Examples:</strong>";
+                    ctx.examples.forEach((ex, idx) => {
+                        const exBox = document.createElement("div");
+                        exBox.style.cssText = "background: rgba(30, 41, 59, 0.4); border-radius: 4px; padding: 6px; margin-top: 4px; font-family: monospace;";
+                        exBox.innerHTML = `Input: ${escapeHtml(JSON.stringify(ex.input))}<br>Output: ${escapeHtml(JSON.stringify(ex.output))}`;
+                        exContainer.appendChild(exBox);
+                    });
+                }
+
+                // Populate Editor with Draft or Starter Code
+                const editor = document.getElementById("wsCodeEditor");
+                if (draft && draft.code) {
+                    editor.value = draft.code;
+                    document.getElementById("wsDraftSavedStatus").innerText = `Draft loaded (${draft.updated_at.slice(11, 19)})`;
+                } else {
+                    const starter = (ctx.starter_code && ctx.starter_code[lang]) || "";
+                    editor.value = starter;
+                    document.getElementById("wsDraftSavedStatus").innerText = "Default starter template";
+                }
+
+            } catch (err) {
+                console.error("Error opening workspace:", err);
+            }
+        }
+
+        async function switchWorkspaceLanguage() {
+            if (activeWorkspacePid) {
+                const lang = document.getElementById("wsLanguageSelect").value || "python";
+                const draftRes = await fetch(`/api/workspace/draft/${activeWorkspacePid}?language=${lang}`);
+                const draft = await draftRes.json();
+                const editor = document.getElementById("wsCodeEditor");
+                if (draft && draft.code) {
+                    editor.value = draft.code;
+                    document.getElementById("wsDraftSavedStatus").innerText = `Draft loaded (${draft.updated_at.slice(11, 19)})`;
+                } else {
+                    editor.value = "";
+                    document.getElementById("wsDraftSavedStatus").innerText = "Empty draft";
+                }
+            }
+        }
+
+        async function saveCurrentDraft() {
+            if (!activeWorkspacePid) return;
+            const lang = document.getElementById("wsLanguageSelect").value || "python";
+            const code = document.getElementById("wsCodeEditor").value;
+            try {
+                const res = await fetch("/api/workspace/draft/save", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        problem_id: activeWorkspacePid,
+                        language: lang,
+                        code: code
+                    })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showAlert("Draft saved locally.");
+                    document.getElementById("wsDraftSavedStatus").innerText = "Draft saved just now";
+                } else {
+                    showAlert(data.error || "Failed to save draft", false);
+                }
+            } catch (err) {
+                showAlert("Error saving draft", false);
+            }
+        }
+
+        async function runWorkspaceCode() {
+            if (!activeWorkspacePid) return;
+            const lang = document.getElementById("wsLanguageSelect").value || "python";
+            const code = document.getElementById("wsCodeEditor").value;
+
+            document.getElementById("wsResultCard").style.display = "block";
+            document.getElementById("wsResultStatusBadge").innerText = "RUNNING...";
+            document.getElementById("wsResultStatusBadge").style.background = "#334155";
+            document.getElementById("wsResultFeedback").innerText = "Executing in local test harness...";
+            document.getElementById("wsResultDiagnostics").style.display = "none";
+            document.getElementById("wsCoachGuidance").style.display = "none";
+
+            try {
+                const res = await fetch("/api/workspace/run", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        problem_id: activeWorkspacePid,
+                        language: lang,
+                        code: code,
+                        mission_id: activeWorkspaceMissionId,
+                        task_id: activeWorkspaceTaskId
+                    })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    lastWorkspaceRunId = data.run_id;
+                    const badge = document.getElementById("wsResultStatusBadge");
+                    badge.innerText = data.status.toUpperCase();
+                    if (data.status === "passed") {
+                        badge.style.background = "rgba(34, 197, 94, 0.2)";
+                        badge.style.color = "#4ade80";
+                        badge.style.border = "1px solid #22c55e";
+                        if (activeWorkspaceMissionId && activeWorkspaceTaskId) {
+                            document.getElementById("btnConfirmTaskCompletion").style.display = "inline-block";
+                        }
+                    } else {
+                        badge.style.background = "rgba(239, 68, 68, 0.2)";
+                        badge.style.color = "#f87171";
+                        badge.style.border = "1px solid #ef4444";
+                        document.getElementById("btnConfirmTaskCompletion").style.display = "none";
+                    }
+
+                    document.getElementById("wsResultFeedback").innerText = `Passed: ${data.passed_count}/${data.total_tests} tests. ${data.suggested_next_action}`;
+
+                    const diag = document.getElementById("wsResultDiagnostics");
+                    if (data.compile_error || data.execution_error || data.failed_test_detail) {
+                        diag.innerText = data.compile_error || data.execution_error || JSON.stringify(data.failed_test_detail, null, 2);
+                        diag.style.display = "block";
+                    }
+
+                    const coachBox = document.getElementById("wsCoachGuidance");
+                    if (data.coach_feedback) {
+                        coachBox.innerText = data.coach_feedback;
+                        coachBox.style.display = "block";
+                    }
+
+                } else {
+                    showAlert(data.error || "Execution failed", false);
+                }
+            } catch (err) {
+                showAlert("Error running test suite", false);
+            }
+        }
+
+        async function confirmTaskCompletionAction() {
+            if (!activeWorkspaceMissionId || !activeWorkspaceTaskId) return;
+            try {
+                const res = await fetch(`/api/daily-mission/task/${activeWorkspaceTaskId}/complete`, { method: "POST" });
+                const data = await res.json();
+                if (res.ok) {
+                    showAlert("Mission task successfully confirmed as completed! 🏆");
+                    document.getElementById("btnConfirmTaskCompletion").style.display = "none";
+                    reloadDailyMission();
+                    returnToDailyMission();
+                } else {
+                    showAlert(data.error || "Failed to confirm task completion", false);
+                }
+            } catch (err) {
+                showAlert("Error confirming task completion", false);
+            }
+        }
+
+        function returnToDailyMission() {
+            document.getElementById("focusModeContainer").scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Initialize Coach, Revision, Goals, Roadmap, Daily Mission, and Workspace on window load
         window.addEventListener("DOMContentLoaded", () => {
             initCoach();
             reloadRevisionQueue();
             reloadGoalsAndMilestones();
             reloadRoadmapData();
             reloadDailyMission();
+            openProblemInWorkspace("two-sum");
         });
 
         // Close modal on outside click
@@ -2834,6 +3118,144 @@ def create_app(
         analytics = mgr.get_analytics()
         from dataclasses import asdict
         return jsonify(asdict(analytics))
+
+    # =========================================================================
+    # Mission-Integrated Coding Workspace Endpoints (Milestone 6.3.16)
+    # =========================================================================
+
+    @app.route("/api/workspace")
+    def api_workspace_status():
+        """Retrieve workspace capabilities and active defaults."""
+        return jsonify({
+            "status": "ready",
+            "supported_languages": ["python", "c", "cpp", "java"],
+            "default_language": "python",
+        })
+
+    @app.route("/api/workspace/problem/<problem_id>")
+    def api_workspace_problem_context(problem_id: str):
+        """Fetch problem context, metadata, examples, and active mission links."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", problem_id):
+            return jsonify({"error": "Invalid problem identifier format"}), 400
+
+        mission_id = request.args.get("mission_id")
+        task_id = request.args.get("task_id")
+
+        ws_mgr = WorkspaceManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        ctx = ws_mgr.get_problem_context(
+            problem_id=problem_id,
+            mission_id=mission_id,
+            task_id=task_id,
+        )
+        if not ctx:
+            return jsonify({"error": f"Problem '{problem_id}' not found"}), 404
+
+        from dataclasses import asdict
+        return jsonify(asdict(ctx))
+
+    @app.route("/api/workspace/draft/<problem_id>")
+    def api_workspace_get_draft(problem_id: str):
+        """Fetch saved draft code for a problem in specified language."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", problem_id):
+            return jsonify({"error": "Invalid problem identifier format"}), 400
+
+        language = request.args.get("language", "python")
+        ws_mgr = WorkspaceManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        draft = ws_mgr.get_draft(problem_id, language=language)
+        if not draft:
+            return jsonify({"problem_id": problem_id, "language": language, "code": ""})
+
+        from dataclasses import asdict
+        return jsonify(asdict(draft))
+
+    @app.route("/api/workspace/draft/save", methods=["POST"])
+    def api_workspace_save_draft():
+        """Save solution draft locally."""
+        req_data = request.get_json(silent=True) or {}
+        problem_id = req_data.get("problem_id", "").strip()
+        language = req_data.get("language", "python")
+        code = req_data.get("code", "")
+
+        if not problem_id or not re.match(r"^[a-zA-Z0-9_\-]+$", problem_id):
+            return jsonify({"error": "Invalid problem identifier"}), 400
+
+        ws_mgr = WorkspaceManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        draft = ws_mgr.save_draft(problem_id=problem_id, language=language, code=code)
+        from dataclasses import asdict
+        return jsonify(asdict(draft))
+
+    @app.route("/api/workspace/run", methods=["POST"])
+    def api_workspace_run_code():
+        """Run solution code against local test cases using UnifiedJudge."""
+        req_data = request.get_json(silent=True) or {}
+        problem_id = req_data.get("problem_id", "").strip()
+        language = req_data.get("language", "python")
+        code = req_data.get("code", "")
+        timeout = int(req_data.get("timeout", 10))
+
+        if not problem_id or not re.match(r"^[a-zA-Z0-9_\-]+$", problem_id):
+            return jsonify({"error": "Invalid problem identifier"}), 400
+
+        ws_mgr = WorkspaceManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            result = ws_mgr.run_code(
+                problem_id=problem_id,
+                code=code,
+                language=language,
+                timeout=timeout,
+            )
+            from dataclasses import asdict
+            return jsonify(asdict(result))
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 404
+        except Exception as e:
+            return jsonify({"error": f"Execution failed: {str(e)}"}), 500
+
+    @app.route("/api/workspace/history")
+    def api_workspace_history():
+        """Fetch recent run results."""
+        problem_id = request.args.get("problem_id")
+        try:
+            limit = int(request.args.get("limit", 10))
+        except ValueError:
+            limit = 10
+
+        ws_mgr = WorkspaceManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        runs = ws_mgr.list_run_history(problem_id=problem_id, limit=limit)
+        from dataclasses import asdict
+        return jsonify([asdict(r) for r in runs])
+
+    @app.route("/api/workspace/result/<run_id>")
+    def api_workspace_run_result(run_id: str):
+        """Fetch specific run result by run_id."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", run_id):
+            return jsonify({"error": "Invalid run_id format"}), 400
+
+        ws_mgr = WorkspaceManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        run_res = ws_mgr.get_run_result(run_id)
+        if not run_res:
+            return jsonify({"error": f"Run result '{run_id}' not found"}), 404
+
+        from dataclasses import asdict
+        return jsonify(asdict(run_res))
 
     return app
 

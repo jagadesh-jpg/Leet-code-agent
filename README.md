@@ -435,11 +435,17 @@ Displays a tabular overview of all curated and custom problems:
 .\.venv\Scripts\python.exe main.py --list-problems
 ```
 
-### 3. Analytics Dashboard
-Inspect solved tallies by language, submission counts, and active worker state:
+### 3. Analytics Dashboard & Interactive Command Center
+Inspect solved tallies by language, submission counts, and active worker state in terminal:
 ```powershell
 .\.venv\Scripts\python.exe main.py --dashboard
 ```
+
+Launch the local interactive learning command center web workspace (runs offline on `127.0.0.1`):
+```powershell
+.\.venv\Scripts\python.exe pipeline_cli.py --dashboard-web --port 5050
+```
+Open **`http://127.0.0.1:5050/`** to dynamically plan sessions, track problem progress, inspect topic mastery, and review adaptive recommendations.
 
 ### 4. Autonomous Queue (Offline / Mock Mode)
 Run the batch solver across queued problems without consuming API credits:

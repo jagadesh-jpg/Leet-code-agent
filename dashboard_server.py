@@ -15,10 +15,11 @@ from pathlib import Path
 import re
 from typing import Any, Dict, Optional
 
-from flask import Flask, jsonify, render_template_string, request
+from flask import Flask, Response, jsonify, render_template_string, request
 
 from dashboard import get_dashboard_data, _get_learning_intelligence_data
 from intelligence.adaptive import AdaptiveLearningEngine
+from intelligence.insights import LearningInsightsEngine
 from intelligence.planner import SessionPlanner
 from intelligence.tracker import (
     DEFAULT_TRACKING_DB_PATH,
@@ -470,6 +471,34 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                     {% endfor %}
                 </tbody>
             </table>
+        </div>
+
+        <!-- Learning Insights & Performance Analytics Export Section (Milestone 6.3.10) -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Learning Insights & Sanitized Performance Export</h2>
+                <div>
+                    <a href="/api/export/csv" class="btn btn-secondary btn-sm" download>Export CSV</a>
+                    <a href="/api/export/json" class="btn btn-secondary btn-sm" download style="margin-left: 6px;">Export JSON</a>
+                </div>
+            </div>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px;">
+                Download complete, privacy-safe analytics of your practice activity, topic mastery, and session progression. All credentials, API tokens, internal paths, and raw code solutions are strictly excluded.
+            </p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px;">
+                <div style="background: rgba(15, 23, 42, 0.6); padding: 16px; border-radius: 8px; border: 1px solid var(--border);">
+                    <h3 style="font-size: 0.95rem; color: var(--primary); margin-bottom: 6px;">Activity Timeline</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-muted);">Tracks learning intensity, problems solved, and session completions mapped across recorded calendar dates.</p>
+                </div>
+                <div style="background: rgba(15, 23, 42, 0.6); padding: 16px; border-radius: 8px; border: 1px solid var(--border);">
+                    <h3 style="font-size: 0.95rem; color: var(--success); margin-bottom: 6px;">Topic Improvement</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-muted);">Evaluates verified pass rates and failure reductions to identify strongest domains versus areas needing practice.</p>
+                </div>
+                <div style="background: rgba(15, 23, 42, 0.6); padding: 16px; border-radius: 8px; border: 1px solid var(--border);">
+                    <h3 style="font-size: 0.95rem; color: var(--accent); margin-bottom: 6px;">Session Completion</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-muted);">Measures completed vs skipped problem ratios and pacing to prevent fatigue and support adaptive sizing.</p>
+                </div>
+            </div>
         </div>
 
         <footer>
@@ -989,6 +1018,45 @@ def create_app(
             })
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/insights")
+    def api_insights():
+        """Retrieve complete learning performance insights report."""
+        engine = LearningInsightsEngine(
+            progress_db_path=db_path,
+            tracking_db_path=tracker_path,
+        )
+        report = engine.generate_report()
+        from dataclasses import asdict
+        return jsonify(asdict(report))
+
+    @app.route("/api/export/json")
+    def api_export_json():
+        """Safe export of learning analytics as sanitized JSON."""
+        engine = LearningInsightsEngine(
+            progress_db_path=db_path,
+            tracking_db_path=tracker_path,
+        )
+        json_str = engine.export_json()
+        return Response(
+            json_str,
+            mimetype="application/json",
+            headers={"Content-Disposition": "attachment;filename=learning_analytics.json"},
+        )
+
+    @app.route("/api/export/csv")
+    def api_export_csv():
+        """Safe export of learning analytics as sanitized CSV."""
+        engine = LearningInsightsEngine(
+            progress_db_path=db_path,
+            tracking_db_path=tracker_path,
+        )
+        csv_str = engine.export_csv()
+        return Response(
+            csv_str,
+            mimetype="text/csv",
+            headers={"Content-Disposition": "attachment;filename=learning_analytics.csv"},
+        )
 
     return app
 

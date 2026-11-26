@@ -7,6 +7,12 @@ from intelligence.adaptive import (
     NextActionRecommendation,
     RecommendedActionType,
 )
+from intelligence.insights import (
+    DailyActivityMetric,
+    LearningInsightsEngine,
+    LearningInsightsReport,
+    TopicImprovementMetric,
+)
 from intelligence.planner import (
     LearningSessionPlan,
     PlannedProblem,
@@ -55,4 +61,8 @@ __all__ = [
     "AdaptiveSessionSizing",
     "NextActionRecommendation",
     "RecommendedActionType",
+    "LearningInsightsEngine",
+    "LearningInsightsReport",
+    "TopicImprovementMetric",
+    "DailyActivityMetric",
 ]

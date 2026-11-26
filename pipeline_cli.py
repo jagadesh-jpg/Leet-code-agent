@@ -225,6 +225,11 @@ def main():
         help="Display deterministic problem prioritization ranking using ProblemSelector",
     )
     parser.add_argument(
+        "--topics",
+        action="store_true",
+        help="Display offline algorithm topic coverage, performance metrics, and learning opportunities",
+    )
+    parser.add_argument(
         "--all",
         action="store_true",
         help="Include already solved problems in selection ranking (default: False)",
@@ -260,6 +265,37 @@ def main():
     )
 
     args = parser.parse_args()
+
+    if args.topics:
+        from intelligence.topics import TopicAnalyzer
+        from problems import load_problems
+        analyzer = TopicAnalyzer(db_path=args.db_path, language=args.language)
+        candidates = load_problems()
+        metrics = analyzer.analyze_topics(candidates)
+
+        print("=" * 80)
+        print("  TOPIC-AWARE LEARNING INTELLIGENCE - OFFLINE PERFORMANCE ANALYSIS")
+        print("=" * 80)
+        print(f"  Target Language: {args.language}")
+        print(f"  Database Path:   {args.db_path or 'Default progress.db'}")
+        print("-" * 80)
+        print(f"{'TOPIC':<22} {'TOTAL':<7} {'SOLVED':<8} {'ATTEMPTS':<10} {'MASTERY STATUS':<16} {'SUMMARY'}")
+        print("-" * 80)
+        for topic, m in sorted(metrics.items(), key=lambda x: (-x[1].unsolved_problems, x[0])):
+            print(f"{m.topic:<22} {m.total_problems:<7} {m.solved_problems:<8} {m.total_attempts:<10} {m.mastery_status:<16} {m.summary}")
+
+        print("=" * 80)
+        # Recommendation insight
+        weak_topics = [t for t, m in metrics.items() if m.mastery_status == "needs_practice"]
+        untouched = [t for t, m in metrics.items() if m.mastery_status == "no_history"]
+        if weak_topics:
+            print(f"  Recommendations: Prioritize weak topics: {', '.join(weak_topics)}")
+        elif untouched:
+            print(f"  Recommendations: Expand topic coverage by practicing: {', '.join(untouched[:3])}")
+        else:
+            print("  Recommendations: All covered topics are proficient or mastered.")
+        print("=" * 80 + "\n")
+        sys.exit(0)
 
     if args.select:
         from intelligence.selector import ProblemSelector

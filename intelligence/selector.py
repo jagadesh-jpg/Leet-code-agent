@@ -1,6 +1,6 @@
 """Deterministic & Explainable Problem Prioritization Engine.
 
-Milestone 6.3.3: Intelligent Problem Selection Engine.
+Milestone 6.3.3 & 6.3.4: Intelligent Problem Selection Engine & Topic-Aware Learning Intelligence.
 Prioritizes problem candidates for autonomous solving based on transparent,
 rule-based heuristics without machine learning, external network requests, or
 unfounded metadata assumptions.
@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from intelligence.topics import TopicAnalyzer, TopicPerformanceMetric, get_problem_topics
 import store
 
 
@@ -25,10 +26,12 @@ class ProblemScoreBreakdown:
     difficulty_preference_score: float
     unsolved_attempt_penalty_or_bonus: float
     repeat_selection_penalty: float
+    topic_performance_adjustment: float
     total_score: float
     rationale: str
     historical_attempts: int = 0
     historical_status: Optional[str] = None
+    all_topics: List[str] = field(default_factory=list)
 
 
 class ProblemSelector:
@@ -48,12 +51,15 @@ class ProblemSelector:
         preferred_difficulty: Optional[str] = None,
         prioritize_failed_attempts: bool = True,
         max_attempt_threshold: int = 5,
+        enable_topic_intelligence: bool = True,
     ):
         self.db_path = db_path
         self.language = (language or "python").strip().lower()
         self.preferred_difficulty = preferred_difficulty.strip().lower() if preferred_difficulty else None
         self.prioritize_failed_attempts = prioritize_failed_attempts
         self.max_attempt_threshold = max_attempt_threshold
+        self.enable_topic_intelligence = enable_topic_intelligence
+        self.topic_analyzer = TopicAnalyzer(db_path=db_path, language=self.language)
 
     def get_problem_history(self, problem_id: str) -> Dict[str, Any]:
         """Fetch attempt count and last status from database safely (read-only)."""
@@ -103,16 +109,18 @@ class ProblemSelector:
         self,
         problem: Dict[str, Any],
         recent_selected_ids: Optional[List[str]] = None,
+        topic_metrics: Optional[Dict[str, TopicPerformanceMetric]] = None,
     ) -> ProblemScoreBreakdown:
         """Calculate deterministic priority score and rationale for a problem candidate."""
         pid = problem["id"]
         title = problem.get("title", pid)
         diff = problem.get("difficulty", "medium").strip().lower()
 
-        # Check topic or pattern metadata without making assumptions
-        # Only use metadata explicitly present in the problem dict
-        topic = problem.get("pattern") or problem.get("topic") or problem.get("type")
-        topic_available = bool(topic)
+        # Retrieve standardized topics supported for problem
+        topics = get_problem_topics(problem)
+        topic_available = bool(topics)
+        raw_pattern = problem.get("pattern") or problem.get("topic") or problem.get("type")
+        primary_topic = raw_pattern if raw_pattern else (topics[0] if topics else None)
 
         # 1. Base difficulty score
         base_diff_score = self.DEFAULT_DIFFICULTY_WEIGHTS.get(diff, 15.0)
@@ -140,7 +148,11 @@ class ProblemSelector:
             rationale_parts.append(f"Does not match preferred difficulty '{self.preferred_difficulty}' ({diff_pref_score:.0f})")
 
         if topic_available:
-            rationale_parts.append(f"Topic: {topic}")
+            if primary_topic:
+                rationale_parts.append(f"Topic: {primary_topic}")
+            else:
+                topics_str = ", ".join(topics)
+                rationale_parts.append(f"Topics: [{topics_str}]")
         else:
             rationale_parts.append("Topic metadata: unavailable")
 
@@ -167,23 +179,48 @@ class ProblemSelector:
             repeat_penalty = -25.0
             rationale_parts.append("Selected recently in active queue (-25)")
 
-        total = base_diff_score + diff_pref_score + attempt_adjustment + repeat_penalty
+        # 5. Topic-aware performance scoring
+        # Mild, explainable adjustment: Boost practice in weak topics (+15.0 max),
+        # slight preference for untouched topics (+5.0), mild deprioritization if topic already mastered (-5.0)
+        topic_adjustment = 0.0
+        if self.enable_topic_intelligence and topic_metrics and topics:
+            weak_topics: List[str] = []
+            mastered_topics: List[str] = []
+
+            for t in topics:
+                metric = topic_metrics.get(t)
+                if metric:
+                    if metric.mastery_status == "needs_practice":
+                        weak_topics.append(t)
+                    elif metric.mastery_status == "mastered":
+                        mastered_topics.append(t)
+
+            if weak_topics:
+                topic_adjustment = 15.0
+                rationale_parts.append(f"Reinforces weak topic(s) ({', '.join(weak_topics)}) (+15)")
+            elif mastered_topics and len(mastered_topics) == len(topics):
+                topic_adjustment = -5.0
+                rationale_parts.append(f"Topic already mastered (-5)")
+
+        total = base_diff_score + diff_pref_score + attempt_adjustment + repeat_penalty + topic_adjustment
         rationale = "; ".join(rationale_parts)
 
         return ProblemScoreBreakdown(
             problem_id=pid,
             title=title,
             difficulty=diff,
-            topic_or_pattern=topic,
+            topic_or_pattern=primary_topic,
             topic_available=topic_available,
             base_difficulty_score=base_diff_score,
             difficulty_preference_score=diff_pref_score,
             unsolved_attempt_penalty_or_bonus=attempt_adjustment,
             repeat_selection_penalty=repeat_penalty,
+            topic_performance_adjustment=topic_adjustment,
             total_score=total,
             rationale=rationale,
             historical_attempts=attempts,
             historical_status=status,
+            all_topics=topics,
         )
 
     def prioritize_candidates(
@@ -197,6 +234,11 @@ class ProblemSelector:
         if not candidates:
             return []
 
+        # Precompute topic performance metrics if enabled
+        topic_metrics: Optional[Dict[str, TopicPerformanceMetric]] = None
+        if self.enable_topic_intelligence:
+            topic_metrics = self.topic_analyzer.analyze_topics(candidates, include_curated=True)
+
         scored_candidates: List[Tuple[Dict[str, Any], ProblemScoreBreakdown]] = []
 
         for p in candidates:
@@ -207,12 +249,16 @@ class ProblemSelector:
                 if hist["is_solved"] or store.is_solved(pid, language=self.language, db_path=self.db_path):
                     continue
 
-            breakdown = self.score_problem(p, recent_selected_ids=recent_selected_ids)
+            breakdown = self.score_problem(
+                p,
+                recent_selected_ids=recent_selected_ids,
+                topic_metrics=topic_metrics,
+            )
             scored_candidates.append((p, breakdown))
 
         # Deterministic sort order:
         # 1. Total score descending
-        # 2. Problem difficulty ranking
+        # 2. Problem difficulty ranking (Easy -> Med -> Hard)
         # 3. Problem ID ascending (tie-breaker for absolute determinism)
         diff_order = {"easy": 1, "medium": 2, "hard": 3}
         scored_candidates.sort(

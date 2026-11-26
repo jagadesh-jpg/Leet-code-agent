@@ -220,6 +220,22 @@ def main():
         help="Run deterministic offline end-to-end demonstration (2 problems, correction cycle + immediate success)",
     )
     parser.add_argument(
+        "--select",
+        action="store_true",
+        help="Display deterministic problem prioritization ranking using ProblemSelector",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Include already solved problems in selection ranking (default: False)",
+    )
+    parser.add_argument(
+        "--difficulty",
+        choices=["easy", "medium", "hard"],
+        default=None,
+        help="Filter or prefer specific difficulty (default: None)",
+    )
+    parser.add_argument(
         "--db-path",
         type=str,
         default=None,
@@ -244,6 +260,28 @@ def main():
     )
 
     args = parser.parse_args()
+
+    if args.select:
+        from intelligence.selector import ProblemSelector
+        from problems import load_problems
+        selector = ProblemSelector(
+            db_path=args.db_path,
+            language=args.language,
+            preferred_difficulty=args.difficulty,
+        )
+        candidates = load_problems()
+        prioritized = selector.prioritize_candidates(candidates, skip_solved=not args.all)
+        print("=" * 80)
+        print("  INTELLIGENT PROBLEM SELECTION ENGINE - DETERMINISTIC RANKING")
+        print("=" * 80)
+        print(f"{'RANK':<5} {'ID':<30} {'DIFF':<8} {'SCORE':<7} {'RATIONALE'}")
+        print("-" * 80)
+        if not prioritized:
+            print("  (No eligible uncompleted problems found. Use --all to view ranking of all problems.)")
+        for idx, (p, b) in enumerate(prioritized, 1):
+            print(f"{idx:<5} {b.problem_id:<30} {b.difficulty:<8} {b.total_score:<7.1f} {b.rationale}")
+        print("=" * 80)
+        sys.exit(0)
 
     if args.demo or len(sys.argv) == 1:
         # Default behavior: run deterministic offline demonstration

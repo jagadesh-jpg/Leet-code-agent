@@ -208,13 +208,19 @@ class AutonomousPipeline:
             d_norm = difficulty.strip().lower()
             candidates = [p for p in candidates if p.get("difficulty", "").lower() == d_norm]
 
-        filtered = []
-        for p in candidates:
-            if skip_solved and store.is_solved(p["id"], language=self.language, db_path=self.db_path):
-                continue
-            filtered.append(p)
-
-        return filtered[:max_problems]
+        # Use ProblemSelector for deterministic prioritization
+        from intelligence.selector import ProblemSelector
+        selector = ProblemSelector(
+            db_path=self.db_path,
+            language=self.language,
+            preferred_difficulty=difficulty,
+        )
+        prioritized = selector.prioritize_candidates(
+            candidates,
+            skip_solved=skip_solved,
+            max_problems=max_problems,
+        )
+        return [p for p, _ in prioritized]
 
     # Stage 6: Classify failure
     @staticmethod

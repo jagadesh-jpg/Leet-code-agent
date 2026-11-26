@@ -58,6 +58,14 @@ from intelligence.portfolio import (
     PortfolioConfig,
     PortfolioManager,
 )
+from intelligence.practice_session import (
+    PracticeSession,
+    PracticeSessionEvent,
+    PracticeSessionManager,
+    PracticeSessionNotes,
+    PracticeSessionStatus,
+    SessionSummary,
+)
 from intelligence.preparation_planner import (
     IntensityLevel,
     PlanProgress,
@@ -1604,6 +1612,121 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             <div id="plannerScheduleContainer">
                 <div style="color: var(--text-muted); font-size: 0.85rem; text-align: center; padding: 20px;">
                     No preparation schedule loaded. Click "Generate New Plan" to create your customized preparation schedule.
+                </div>
+            </div>
+        </div>
+
+        <!-- Milestone 6.3.22: Plan-to-Practice Execution Bridge Card -->
+        <div class="card" id="practiceSessionCard" style="margin-bottom: 24px;">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div>
+                    <h2 class="card-title" style="margin: 0; font-size: 1.15rem; display: flex; align-items: center; gap: 8px;">
+                        <span>🎯 Plan-to-Practice Execution Bridge</span>
+                        <span id="practiceSessionStatusBadge" class="badge" style="background: var(--surface-light); color: var(--text-muted); font-size: 0.75rem; padding: 2px 8px; border-radius: 4px;">NO ACTIVE SESSION</span>
+                    </h2>
+                    <p style="margin: 4px 0 0 0; font-size: 0.85rem; color: var(--text-muted);">
+                        Bridge planner tasks to live coding sessions with timer tracking, submission evidence, notes reflection, and explicit task confirmation.
+                    </p>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button class="btn btn-secondary btn-sm" onclick="showPracticeHistoryModal()">📜 Session History</button>
+                </div>
+            </div>
+
+            <!-- Quick Start Standalone Practice Bar -->
+            <div id="practiceStartBar" style="background: rgba(15, 23, 42, 0.5); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <h3 style="font-size: 0.85rem; color: var(--text); margin: 0; text-transform: uppercase; letter-spacing: 0.5px;">Standalone Practice Launch</h3>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <input type="text" id="standaloneProblemId" placeholder="Problem ID (e.g. two-sum)" value="two-sum" style="background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; font-size: 0.85rem; min-width: 180px;">
+                    <select id="standaloneLanguage" style="background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; font-size: 0.85rem;">
+                        <option value="python">Python</option>
+                        <option value="cpp">C++</option>
+                        <option value="c">C</option>
+                        <option value="java">Java</option>
+                    </select>
+                    <button class="btn btn-primary btn-sm" onclick="startStandalonePracticeSession()">🚀 Start Practice Session</button>
+                </div>
+            </div>
+
+            <!-- Active Practice Session Panel (Shown when session is active or paused) -->
+            <div id="activePracticeSessionBox" style="display: none; background: rgba(30, 41, 59, 0.4); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                <!-- Session Header Info -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                            <span id="activeSessTaskTypeBadge" class="badge" style="background: rgba(59, 130, 246, 0.2); color: #93c5fd; font-size: 0.75rem; padding: 2px 6px; border-radius: 4px;">TASK</span>
+                            <h3 id="activeSessTitle" style="margin: 0; font-size: 1rem; color: var(--text);">Active Practice Session</h3>
+                        </div>
+                        <span id="activeSessSubtitle" style="font-size: 0.8rem; color: var(--text-muted);">Problem: None • Language: Python</span>
+                    </div>
+
+                    <!-- Live Timer Display and Quick Controls -->
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div style="text-align: right;">
+                            <span style="font-size: 0.75rem; color: var(--text-muted); display: block;">Session Elapsed</span>
+                            <span id="activeSessTimerDisplay" style="font-size: 1.3rem; font-weight: bold; font-family: monospace; color: var(--success);">00:00</span>
+                        </div>
+                        <div style="display: flex; gap: 6px;">
+                            <button id="btnPauseResumeSession" class="btn btn-secondary btn-sm" onclick="togglePauseResumeSession()">⏸️ Pause</button>
+                            <button class="btn btn-warning btn-sm" style="background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.5); color: #f87171;" onclick="endPracticeSession('abandoned')">Abandon</button>
+                            <button class="btn btn-primary btn-sm" onclick="confirmTaskCompletion()">✅ Complete & Confirm Task</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Evidence & Metrics Strip -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-bottom: 14px; font-size: 0.8rem;">
+                    <div style="background: rgba(15, 23, 42, 0.5); padding: 8px; border-radius: 4px; border: 1px solid var(--border);">
+                        <span style="color: var(--text-muted); display: block;">Total Runs</span>
+                        <strong id="sessSubmissionsCount" style="color: var(--text);">0</strong>
+                    </div>
+                    <div style="background: rgba(15, 23, 42, 0.5); padding: 8px; border-radius: 4px; border: 1px solid var(--border);">
+                        <span style="color: var(--text-muted); display: block;">Passed Runs</span>
+                        <strong id="sessPassedCount" style="color: var(--success);">0</strong>
+                    </div>
+                    <div style="background: rgba(15, 23, 42, 0.5); padding: 8px; border-radius: 4px; border: 1px solid var(--border);">
+                        <span style="color: var(--text-muted); display: block;">Failed Runs</span>
+                        <strong id="sessFailedCount" style="color: var(--warning);">0</strong>
+                    </div>
+                    <div style="background: rgba(15, 23, 42, 0.5); padding: 8px; border-radius: 4px; border: 1px solid var(--border);">
+                        <span style="color: var(--text-muted); display: block;">Final Status</span>
+                        <strong id="sessFinalStatus" style="color: var(--text-muted);">None</strong>
+                    </div>
+                    <div style="background: rgba(15, 23, 42, 0.5); padding: 8px; border-radius: 4px; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center;">
+                        <button class="btn btn-secondary btn-sm" style="font-size: 0.75rem; width: 100%;" onclick="openActiveSessionInWorkspace()">💻 Open Editor</button>
+                    </div>
+                </div>
+
+                <!-- Structured Reflection Notes Accordion -->
+                <div style="background: rgba(15, 23, 42, 0.3); border: 1px solid var(--border); border-radius: 6px; padding: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <strong style="color: var(--text); font-size: 0.85rem;">📝 Reflection & Complexity Notes</strong>
+                        <button class="btn btn-secondary btn-sm" style="font-size: 0.75rem; padding: 2px 8px;" onclick="saveActiveSessionNotes()">Save Notes</button>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.8rem;">
+                        <div>
+                            <label style="color: var(--text-muted); display: block; margin-bottom: 2px;">Initial Approach</label>
+                            <input type="text" id="noteInitialApproach" placeholder="e.g. Hash map complement lookup" style="width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px;">
+                        </div>
+                        <div>
+                            <label style="color: var(--text-muted); display: block; margin-bottom: 2px;">Mistakes Encountered</label>
+                            <input type="text" id="noteMistakes" placeholder="e.g. Edge case with duplicate numbers" style="width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px;">
+                        </div>
+                        <div>
+                            <label style="color: var(--text-muted); display: block; margin-bottom: 2px;">Time Complexity (Big-O)</label>
+                            <input type="text" id="noteTimeCplx" placeholder="e.g. O(n)" style="width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px;">
+                        </div>
+                        <div>
+                            <label style="color: var(--text-muted); display: block; margin-bottom: 2px;">Space Complexity (Big-O)</label>
+                            <input type="text" id="noteSpaceCplx" placeholder="e.g. O(n)" style="width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px;">
+                        </div>
+                        <div style="grid-column: 1 / -1;">
+                            <label style="color: var(--text-muted); display: block; margin-bottom: 2px;">Key Learning / Takeaway</label>
+                            <input type="text" id="noteKeyLearning" placeholder="e.g. Single-pass hash table reduces runtime from O(n^2) to O(n)" style="width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px;">
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -3662,6 +3785,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             reloadInterviewHistory();
             reloadInterviewAnalytics();
             reloadPreparationPlanner();
+            reloadActivePracticeSession();
         });
 
         // =========================================================================
@@ -3960,6 +4084,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                                                     <div style="display: flex; gap: 6px; align-items: center;">
                                                         ${isDone ? `<span style="font-size: 0.8rem; color: var(--success); font-weight: 600;">&#10003; Done</span>` :
                                                           isSkip ? `<span style="font-size: 0.8rem; color: var(--text-muted);">Skipped</span>` : `
+                                                            <button class="btn btn-sm btn-secondary" style="font-size: 0.75rem; padding: 2px 8px;" onclick="startTaskPracticeSession('${t.task_id}')">▶️ Practice</button>
                                                             <button class="btn btn-sm btn-primary" style="font-size: 0.75rem; padding: 2px 8px;" onclick="completePlanTask('${t.task_id}')">Done</button>
                                                             <button class="btn btn-sm btn-secondary" style="font-size: 0.75rem; padding: 2px 8px;" onclick="skipPlanTask('${t.task_id}')">Skip</button>
                                                         `}
@@ -3976,6 +4101,334 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             });
 
             container.innerHTML = html;
+        }
+
+        // =========================================================================
+        // Milestone 6.3.22: Plan-to-Practice Execution Bridge Client Functions
+        // =========================================================================
+
+        let activePracticeSessionId = null;
+        let practiceSessionTimerInterval = null;
+        let practiceSessionBaseElapsed = 0;
+        let practiceSessionStartedAt = null;
+        let practiceSessionStatus = "pending";
+
+        async function reloadActivePracticeSession() {
+            try {
+                const res = await fetch("/api/practice-session/active");
+                if (!res.ok) return;
+                const data = await res.json();
+                renderPracticeSession(data);
+            } catch (err) {
+                console.error("Failed to reload active practice session:", err);
+            }
+        }
+
+        function renderPracticeSession(session) {
+            const cardBadge = document.getElementById("practiceSessionStatusBadge");
+            const box = document.getElementById("activePracticeSessionBox");
+            const btnPauseResume = document.getElementById("btnPauseResumeSession");
+
+            if (!session) {
+                activePracticeSessionId = null;
+                practiceSessionStatus = "pending";
+                if (practiceSessionTimerInterval) clearInterval(practiceSessionTimerInterval);
+                if (cardBadge) {
+                    cardBadge.textContent = "NO ACTIVE SESSION";
+                    cardBadge.style.background = "var(--surface-light)";
+                    cardBadge.style.color = "var(--text-muted)";
+                }
+                if (box) box.style.display = "none";
+                return;
+            }
+
+            activePracticeSessionId = session.session_id;
+            practiceSessionStatus = session.status;
+            practiceSessionBaseElapsed = session.elapsed_seconds || 0;
+            practiceSessionStartedAt = session.started_at ? new Date(session.started_at).getTime() : Date.now();
+
+            if (box) box.style.display = "block";
+
+            // Status Badge
+            if (cardBadge) {
+                cardBadge.textContent = session.status.toUpperCase();
+                cardBadge.style.background = session.status === 'active' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(234, 179, 8, 0.2)';
+                cardBadge.style.color = session.status === 'active' ? 'var(--success)' : '#fde047';
+            }
+
+            // Title & Subtitle
+            document.getElementById("activeSessTitle").textContent = session.task_title || (session.problem_id ? `Practice: ${session.problem_id}` : "Standalone Practice");
+            document.getElementById("activeSessSubtitle").textContent = `Problem: ${session.problem_id || 'None'} • Language: ${session.language.toUpperCase()}`;
+            document.getElementById("activeSessTaskTypeBadge").textContent = (session.task_type || 'standalone').toUpperCase();
+
+            // Evidence metrics
+            document.getElementById("sessSubmissionsCount").textContent = session.submissions_count;
+            document.getElementById("sessPassedCount").textContent = session.passed_submissions_count;
+            document.getElementById("sessFailedCount").textContent = session.failed_submissions_count;
+            const finalStatusEl = document.getElementById("sessFinalStatus");
+            if (session.submissions_count === 0) {
+                finalStatusEl.textContent = "Unattempted";
+                finalStatusEl.style.color = "var(--text-muted)";
+            } else if (session.final_submission_passed) {
+                finalStatusEl.textContent = "PASSED";
+                finalStatusEl.style.color = "var(--success)";
+            } else {
+                finalStatusEl.textContent = "FAILED";
+                finalStatusEl.style.color = "var(--danger)";
+            }
+
+            // Reflection notes
+            if (session.notes) {
+                document.getElementById("noteInitialApproach").value = session.notes.initial_approach || "";
+                document.getElementById("noteMistakes").value = session.notes.mistakes_encountered || "";
+                document.getElementById("noteTimeCplx").value = session.notes.time_complexity || "";
+                document.getElementById("noteSpaceCplx").value = session.notes.space_complexity || "";
+                document.getElementById("noteKeyLearning").value = session.notes.key_learning || "";
+            }
+
+            // Pause/Resume button text
+            if (btnPauseResume) {
+                if (session.status === 'paused') {
+                    btnPauseResume.textContent = "▶️ Resume";
+                    btnPauseResume.className = "btn btn-primary btn-sm";
+                } else {
+                    btnPauseResume.textContent = "⏸️ Pause";
+                    btnPauseResume.className = "btn btn-secondary btn-sm";
+                }
+            }
+
+            // Start or freeze timer
+            if (practiceSessionTimerInterval) clearInterval(practiceSessionTimerInterval);
+            updatePracticeTimerDisplay();
+            if (session.status === 'active') {
+                practiceSessionTimerInterval = setInterval(updatePracticeTimerDisplay, 1000);
+            }
+        }
+
+        function updatePracticeTimerDisplay() {
+            const timerEl = document.getElementById("activeSessTimerDisplay");
+            if (!timerEl) return;
+
+            let totalSec = practiceSessionBaseElapsed;
+            if (practiceSessionStatus === 'active' && practiceSessionStartedAt) {
+                const now = Date.now();
+                const deltaSec = Math.max(0, Math.floor((now - practiceSessionStartedAt) / 1000));
+                totalSec += deltaSec;
+            }
+
+            const mins = Math.floor(totalSec / 60);
+            const secs = totalSec % 60;
+            timerEl.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        async function startTaskPracticeSession(taskId) {
+            try {
+                const res = await fetch("/api/practice-session/start", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ task_id: taskId, force_switch: true })
+                });
+
+                if (res.ok) {
+                    const session = await res.json();
+                    renderPracticeSession(session);
+                    showToast("Practice session launched for task!", "success");
+
+                    // If problem_id exists, open in workspace editor
+                    if (session.problem_id) {
+                        openProblemInWorkspace(session.problem_id);
+                    }
+                    const card = document.getElementById("practiceSessionCard");
+                    if (card) card.scrollIntoView({ behavior: 'smooth' });
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Failed to start practice session", "error");
+                }
+            } catch (err) {
+                showToast("Error starting task practice session", "error");
+            }
+        }
+
+        async function startStandalonePracticeSession() {
+            try {
+                const pid = document.getElementById("standaloneProblemId").value.trim() || "two-sum";
+                const lang = document.getElementById("standaloneLanguage").value || "python";
+
+                const res = await fetch("/api/practice-session/start", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ problem_id: pid, language: lang, force_switch: true })
+                });
+
+                if (res.ok) {
+                    const session = await res.json();
+                    renderPracticeSession(session);
+                    showToast("Standalone practice session started!", "success");
+                    openProblemInWorkspace(pid);
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Failed to start standalone session", "error");
+                }
+            } catch (err) {
+                showToast("Error starting standalone session", "error");
+            }
+        }
+
+        async function togglePauseResumeSession() {
+            if (!activePracticeSessionId) return;
+            const isPaused = (practiceSessionStatus === 'paused');
+            const endpoint = isPaused ? `/api/practice-session/${activePracticeSessionId}/resume` : `/api/practice-session/${activePracticeSessionId}/pause`;
+
+            try {
+                const res = await fetch(endpoint, { method: "POST" });
+                if (res.ok) {
+                    const session = await res.json();
+                    renderPracticeSession(session);
+                    showToast(isPaused ? "Session resumed!" : "Session paused.", "info");
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Error toggling pause/resume", "error");
+                }
+            } catch (err) {
+                showToast("Error toggling pause/resume", "error");
+            }
+        }
+
+        async function endPracticeSession(status = "completed") {
+            if (!activePracticeSessionId) return;
+            if (!confirm(`Are you sure you want to ${status === 'abandoned' ? 'abandon' : 'end'} this practice session?`)) return;
+
+            try {
+                const res = await fetch(`/api/practice-session/${activePracticeSessionId}/end`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ status: status })
+                });
+
+                if (res.ok) {
+                    renderPracticeSession(null);
+                    showToast(`Practice session ${status}.`, "info");
+                    reloadPreparationPlanner();
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Error ending practice session", "error");
+                }
+            } catch (err) {
+                showToast("Error ending practice session", "error");
+            }
+        }
+
+        async function saveActiveSessionNotes() {
+            if (!activePracticeSessionId) return;
+            const payload = {
+                initial_approach: document.getElementById("noteInitialApproach").value,
+                mistakes_encountered: document.getElementById("noteMistakes").value,
+                time_complexity: document.getElementById("noteTimeCplx").value,
+                space_complexity: document.getElementById("noteSpaceCplx").value,
+                key_learning: document.getElementById("noteKeyLearning").value,
+            };
+
+            try {
+                const res = await fetch(`/api/practice-session/${activePracticeSessionId}/notes`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    showToast("Reflection notes saved!", "success");
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Error saving notes", "error");
+                }
+            } catch (err) {
+                showToast("Error saving notes", "error");
+            }
+        }
+
+        async function confirmTaskCompletion() {
+            if (!activePracticeSessionId) return;
+            const payload = {
+                initial_approach: document.getElementById("noteInitialApproach").value,
+                mistakes_encountered: document.getElementById("noteMistakes").value,
+                time_complexity: document.getElementById("noteTimeCplx").value,
+                space_complexity: document.getElementById("noteSpaceCplx").value,
+                key_learning: document.getElementById("noteKeyLearning").value,
+            };
+
+            try {
+                const res = await fetch(`/api/practice-session/${activePracticeSessionId}/confirm-task`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    const session = await res.json();
+                    renderPracticeSession(null);
+                    showToast("Preparation task confirmed completed and recorded!", "success");
+                    reloadPreparationPlanner();
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Error confirming task completion", "error");
+                }
+            } catch (err) {
+                showToast("Error confirming task completion", "error");
+            }
+        }
+
+        function openActiveSessionInWorkspace() {
+            const sub = document.getElementById("activeSessSubtitle").textContent;
+            const match = sub.match(/Problem:\s*([a-zA-Z0-9_\-]+)/);
+            if (match && match[1] && match[1] !== 'None') {
+                openProblemInWorkspace(match[1]);
+                document.getElementById("workspaceCodeCard")?.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+
+        async function showPracticeHistoryModal() {
+            try {
+                const res = await fetch("/api/practice-session/history");
+                if (!res.ok) return;
+                const items = await res.json();
+
+                const modalBody = document.getElementById("modalSessionBody");
+                document.getElementById("modalSessionTitle").textContent = "Practice Session History";
+
+                if (items.length === 0) {
+                    modalBody.innerHTML = "<p style='color: var(--text-muted);'>No historical practice sessions recorded yet.</p>";
+                } else {
+                    modalBody.innerHTML = `
+                        <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid var(--border); color: var(--text-muted); text-align: left;">
+                                    <th style="padding: 6px;">Date</th>
+                                    <th style="padding: 6px;">Task / Problem</th>
+                                    <th style="padding: 6px;">Status</th>
+                                    <th style="padding: 6px;">Elapsed</th>
+                                    <th style="padding: 6px;">Runs</th>
+                                    <th style="padding: 6px;">Confirmed</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${items.map(i => `
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                        <td style="padding: 6px; color: var(--text-muted);">${(i.created_at || '').slice(0, 16)}</td>
+                                        <td style="padding: 6px; color: var(--text);"><strong>${i.task_title || i.problem_id || 'Standalone'}</strong></td>
+                                        <td style="padding: 6px;"><span class="badge" style="font-size: 0.75rem;">${i.status.toUpperCase()}</span></td>
+                                        <td style="padding: 6px; color: var(--text);">${Math.floor((i.elapsed_seconds || 0) / 60)}m ${((i.elapsed_seconds || 0) % 60)}s</td>
+                                        <td style="padding: 6px; color: var(--text);">${i.submissions_count} (${i.passed_submissions_count} pass)</td>
+                                        <td style="padding: 6px; color: ${i.task_confirmed_completed ? 'var(--success)' : 'var(--text-muted)'};">${i.task_confirmed_completed ? 'YES' : 'NO'}</td>
+                                    </tr>
+                                `).join("")}
+                            </tbody>
+                        </table>
+                    `;
+                }
+                document.getElementById("sessionModal").style.display = "block";
+            } catch (err) {
+                console.error("Failed to show practice history:", err);
+            }
         }
 
         // Close modal on outside click
@@ -5002,6 +5455,27 @@ def create_app(
                 language=language,
                 timeout=timeout,
             )
+
+            # Record submission in active practice session if matching problem or session
+            try:
+                ps_mgr = PracticeSessionManager(
+                    tracking_db_path=tracker_path,
+                    progress_db_path=db_path,
+                )
+                active_sess = ps_mgr.get_active_session()
+                if active_sess and (not active_sess.problem_id or active_sess.problem_id == problem_id):
+                    err_msg = result.compiler_error or result.execution_error
+                    ps_mgr.record_submission(
+                        session_id=active_sess.session_id,
+                        status=result.status,
+                        passed_count=result.passed_count,
+                        total_tests=result.total_tests,
+                        runtime_ms=result.runtime_ms,
+                        error=err_msg,
+                    )
+            except Exception:
+                pass
+
             from dataclasses import asdict
             return jsonify(asdict(result))
         except ValueError as e:
@@ -6030,6 +6504,204 @@ def create_app(
             return jsonify(asdict(updated_plan)), 200
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
+
+    # -------------------------------------------------------------------------
+    # Milestone 6.3.22: Plan-to-Practice Execution Bridge APIs
+    # -------------------------------------------------------------------------
+
+    @app.route("/api/practice-session/active")
+    def api_practice_session_active():
+        """Retrieve current active or paused practice session."""
+        mgr = PracticeSessionManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        session = mgr.get_active_session()
+        from dataclasses import asdict
+        return jsonify(asdict(session) if session else None)
+
+    @app.route("/api/practice-session/history")
+    def api_practice_session_history():
+        """Retrieve historical practice sessions."""
+        try:
+            limit = int(request.args.get("limit", 50))
+        except ValueError:
+            limit = 50
+
+        mgr = PracticeSessionManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        history = mgr.list_history(limit=limit)
+        return jsonify(history)
+
+    @app.route("/api/practice-session/<session_id>")
+    def api_practice_session_detail(session_id: str):
+        """Retrieve details of a specific practice session."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", session_id):
+            return jsonify({"error": "Invalid session_id format"}), 400
+
+        mgr = PracticeSessionManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        session = mgr.get_session(session_id)
+        if not session:
+            return jsonify({"error": f"Practice session '{session_id}' not found."}), 404
+
+        from dataclasses import asdict
+        return jsonify(asdict(session))
+
+    @app.route("/api/practice-session/start", methods=["POST"])
+    def api_practice_session_start():
+        """Start a new practice session from a planner task or standalone."""
+        data = request.get_json(silent=True) or {}
+        task_id = data.get("task_id")
+        plan_id = data.get("plan_id")
+        problem_id = data.get("problem_id")
+        language = data.get("language", "python")
+        force_switch = bool(data.get("force_switch", False))
+
+        if task_id and not re.match(r"^[a-zA-Z0-9_\-]+$", task_id):
+            return jsonify({"error": "Invalid task_id format"}), 400
+        if plan_id and not re.match(r"^[a-zA-Z0-9_\-]+$", plan_id):
+            return jsonify({"error": "Invalid plan_id format"}), 400
+        if problem_id and not re.match(r"^[a-zA-Z0-9_\-]+$", problem_id):
+            return jsonify({"error": "Invalid problem_id format"}), 400
+
+        mgr = PracticeSessionManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            session = mgr.start_session(
+                task_id=task_id,
+                plan_id=plan_id,
+                problem_id=problem_id,
+                language=language,
+                force_switch=force_switch,
+            )
+            from dataclasses import asdict
+            return jsonify(asdict(session)), 201
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/practice-session/<session_id>/pause", methods=["POST"])
+    def api_practice_session_pause(session_id: str):
+        """Pause active practice session and freeze elapsed time."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", session_id):
+            return jsonify({"error": "Invalid session_id format"}), 400
+
+        mgr = PracticeSessionManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            session = mgr.pause_session(session_id)
+            from dataclasses import asdict
+            return jsonify(asdict(session)), 200
+        except ValueError as e:
+            err_msg = str(e)
+            code = 404 if "not found" in err_msg.lower() else 400
+            return jsonify({"error": err_msg}), code
+
+    @app.route("/api/practice-session/<session_id>/resume", methods=["POST"])
+    def api_practice_session_resume(session_id: str):
+        """Resume paused practice session."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", session_id):
+            return jsonify({"error": "Invalid session_id format"}), 400
+
+        mgr = PracticeSessionManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            session = mgr.resume_session(session_id)
+            from dataclasses import asdict
+            return jsonify(asdict(session)), 200
+        except ValueError as e:
+            err_msg = str(e)
+            code = 404 if "not found" in err_msg.lower() else 400
+            return jsonify({"error": err_msg}), code
+
+    @app.route("/api/practice-session/<session_id>/end", methods=["POST"])
+    def api_practice_session_end(session_id: str):
+        """End a session as completed or abandoned."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", session_id):
+            return jsonify({"error": "Invalid session_id format"}), 400
+
+        data = request.get_json(silent=True) or {}
+        status = data.get("status", PracticeSessionStatus.COMPLETED.value)
+
+        mgr = PracticeSessionManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            session = mgr.end_session(session_id, status=status)
+            from dataclasses import asdict
+            return jsonify(asdict(session)), 200
+        except ValueError as e:
+            err_msg = str(e)
+            code = 404 if "not found" in err_msg.lower() else 400
+            return jsonify({"error": err_msg}), code
+
+    @app.route("/api/practice-session/<session_id>/notes", methods=["POST"])
+    def api_practice_session_notes(session_id: str):
+        """Save learner reflection and complexity notes."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", session_id):
+            return jsonify({"error": "Invalid session_id format"}), 400
+
+        notes_data = request.get_json(silent=True) or {}
+
+        mgr = PracticeSessionManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            notes = mgr.save_notes(session_id, notes=notes_data)
+            from dataclasses import asdict
+            return jsonify(asdict(notes)), 200
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 404
+
+    @app.route("/api/practice-session/<session_id>/summary")
+    def api_practice_session_summary(session_id: str):
+        """Retrieve high-level evidence summary of a practice session."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", session_id):
+            return jsonify({"error": "Invalid session_id format"}), 400
+
+        mgr = PracticeSessionManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            summary = mgr.get_session_summary(session_id)
+            from dataclasses import asdict
+            return jsonify(asdict(summary)), 200
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 404
+
+    @app.route("/api/practice-session/<session_id>/confirm-task", methods=["POST"])
+    def api_practice_session_confirm_task(session_id: str):
+        """Explicitly confirm task completion and bridge evidence to preparation planner."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", session_id):
+            return jsonify({"error": "Invalid session_id format"}), 400
+
+        notes = request.get_json(silent=True)
+
+        mgr = PracticeSessionManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            session = mgr.confirm_task_completion(session_id, notes=notes)
+            from dataclasses import asdict
+            return jsonify(asdict(session)), 200
+        except ValueError as e:
+            err_msg = str(e)
+            code = 404 if "not found" in err_msg.lower() else 400
+            return jsonify({"error": err_msg}), code
 
     return app
 

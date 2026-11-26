@@ -133,6 +133,14 @@ from intelligence.tracker import (
     TrackingAnalytics,
 )
 
+from intelligence.practice_session import (
+    PracticeSession,
+    PracticeSessionEvent,
+    PracticeSessionManager,
+    PracticeSessionNotes,
+    PracticeSessionStatus,
+    SessionSummary,
+)
 from intelligence.preparation_planner import (
     IntensityLevel,
     PlanProgress,
@@ -264,4 +272,10 @@ __all__ = [
     "TaskStatus",
     "PlanStatus",
     "IntensityLevel",
+    "PracticeSessionManager",
+    "PracticeSession",
+    "PracticeSessionEvent",
+    "PracticeSessionStatus",
+    "PracticeSessionNotes",
+    "SessionSummary",
 ]

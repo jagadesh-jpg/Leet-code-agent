@@ -7,6 +7,15 @@ from intelligence.adaptive import (
     NextActionRecommendation,
     RecommendedActionType,
 )
+from intelligence.coach import (
+    CoachOverview,
+    CURATED_PROBLEM_HINTS,
+    HintTier,
+    OfflineCodingCoach,
+    PersonalizedCoachInsight,
+    ProblemCoachingGuide,
+    ProgressiveHint,
+)
 from intelligence.insights import (
     DailyActivityMetric,
     LearningInsightsEngine,
@@ -65,4 +74,11 @@ __all__ = [
     "LearningInsightsReport",
     "TopicImprovementMetric",
     "DailyActivityMetric",
+    "OfflineCodingCoach",
+    "HintTier",
+    "ProblemCoachingGuide",
+    "ProgressiveHint",
+    "PersonalizedCoachInsight",
+    "CoachOverview",
+    "CURATED_PROBLEM_HINTS",
 ]

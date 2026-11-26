@@ -19,6 +19,7 @@ from flask import Flask, Response, jsonify, render_template_string, request
 
 from dashboard import get_dashboard_data, _get_learning_intelligence_data
 from intelligence.adaptive import AdaptiveLearningEngine
+from intelligence.coach import OfflineCodingCoach
 from intelligence.insights import LearningInsightsEngine
 from intelligence.planner import SessionPlanner
 from intelligence.tracker import (
@@ -501,6 +502,60 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             </div>
         </div>
 
+        <!-- Offline Intelligent Coding Coach Workspace (Milestone 6.3.11) -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Offline Intelligent Coding Coach</h2>
+                <span class="status-badge badge-mastered">100% Offline AI double / Zero Cloud APIs</span>
+            </div>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px;">
+                Personalized problem-solving feedback, 8-point pedagogical frameworks, and progressive hints designed to foster independent algorithmic implementation.
+            </p>
+            <div style="background: rgba(15, 23, 42, 0.6); padding: 16px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div style="font-weight: 600; color: var(--primary);">Coach Readiness Assessment</div>
+                    <span style="font-size: 0.8rem; color: var(--text-muted);" id="coachReadiness">Analyzing local history...</span>
+                </div>
+                <div style="font-size: 0.85rem; color: #cbd5e1;" id="coachOverviewSummary">Loading personalized coaching profile...</div>
+            </div>
+
+            <!-- Problem selector for progressive hint inspection -->
+            <div class="controls-bar">
+                <label for="coachProblemSelect">Select Target Problem:</label>
+                <select id="coachProblemSelect" onchange="onCoachProblemChange()">
+                    <option value="two-sum" selected>Two Sum (Easy - Arrays, Hashing)</option>
+                    <option value="valid-parentheses">Valid Parentheses (Easy - Stack)</option>
+                    <option value="contains-duplicate">Contains Duplicate (Easy - Arrays, Hashing)</option>
+                    <option value="maximum-subarray">Maximum Subarray (Medium - Dynamic Programming)</option>
+                    <option value="reverse-linked-list">Reverse Linked List (Easy - Linked List)</option>
+                    <option value="merge-two-sorted-lists">Merge Two Sorted Lists (Easy - Linked List)</option>
+                    <option value="longest-substring-without-repeating-characters">Longest Substring Without Repeating Characters (Medium - Sliding Window)</option>
+                    <option value="climbing-stairs">Climbing Stairs (Easy - Dynamic Programming)</option>
+                    <option value="best-time-to-buy-and-sell-stock">Best Time to Buy and Sell Stock (Easy - Greedy)</option>
+                    <option value="binary-search">Binary Search (Easy - Binary Search)</option>
+                </select>
+                <button class="btn btn-secondary btn-sm" onclick="fetchNextProgressiveHint()">Reveal Next Hint</button>
+                <button class="btn btn-secondary btn-sm" onclick="resetHintProgression()">Reset Hints</button>
+            </div>
+
+            <!-- Hint box container -->
+            <div id="coachHintContainer" style="display: none; background: #082f49; border: 1px solid #0284c7; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div id="coachHintTierLabel" style="font-size: 0.95rem; font-weight: 600; color: #38bdf8;">Hint Tier 1: Conceptual Direction</div>
+                    <span id="coachHintRemaining" style="font-size: 0.75rem; color: #7dd3fc;">Progress: Tier 1 of 4</span>
+                </div>
+                <div id="coachHintText" style="color: #f0f9ff; font-size: 0.9rem; white-space: pre-wrap; font-family: monospace;"></div>
+            </div>
+
+            <!-- 8-Point Structured Walkthrough Container -->
+            <div id="coachWalkthroughContainer" style="background: rgba(30, 41, 59, 0.7); border: 1px solid var(--border); border-radius: 8px; padding: 16px;">
+                <h3 style="font-size: 1rem; color: var(--text); margin-bottom: 12px;" id="walkthroughTitle">Problem-Solving Coaching Framework</h3>
+                <div id="walkthroughContent" style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.6;">
+                    Loading structured pedagogical walkthrough...
+                </div>
+            </div>
+        </div>
+
         <footer>
             LeetCode Agent • Local Interactive Learning Workspace • No Live Account Modification
         </footer>
@@ -770,6 +825,122 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
             }[tag] || tag));
         }
+
+        // Coaching script interactions
+        let currentHintTier = 0;
+
+        async function initCoach() {
+            try {
+                const res = await fetch("/api/coach/overview");
+                const data = await res.json();
+                if (res.ok) {
+                    document.getElementById("coachReadiness").innerText = data.readiness_assessment;
+                    let summaryHtml = `<p>${escapeHtml(data.overview_summary)}</p>`;
+                    if (data.personalized_insights && data.personalized_insights.length > 0) {
+                        summaryHtml += '<div style="margin-top: 8px;">';
+                        data.personalized_insights.forEach(ins => {
+                            summaryHtml += `<div style="margin-top: 6px;"><strong style="color: var(--primary);">${escapeHtml(ins.headline)}:</strong> ${escapeHtml(ins.advice)} <em style="color: var(--text-muted); font-size: 0.8rem;">(${escapeHtml(ins.evidence)})</em></div>`;
+                        });
+                        summaryHtml += '</div>';
+                    }
+                    document.getElementById("coachOverviewSummary").innerHTML = summaryHtml;
+                    if (data.recommended_problem) {
+                        const sel = document.getElementById("coachProblemSelect");
+                        for (let i = 0; i < sel.options.length; i++) {
+                            if (sel.options[i].value === data.recommended_problem.id) {
+                                sel.selectedIndex = i;
+                                break;
+                            }
+                        }
+                    }
+                    onCoachProblemChange();
+                }
+            } catch (err) {
+                console.error("Coach init failed", err);
+            }
+        }
+
+        async function onCoachProblemChange() {
+            resetHintProgression();
+            const pid = document.getElementById("coachProblemSelect").value;
+            const container = document.getElementById("walkthroughContent");
+            container.innerHTML = "Loading coaching framework...";
+
+            try {
+                const res = await fetch(`/api/coach/problem/${pid}`);
+                const guide = await res.json();
+                if (!res.ok) {
+                    container.innerHTML = `<p style="color: var(--danger);">${guide.error || "Failed to load coaching guide"}</p>`;
+                    return;
+                }
+
+                document.getElementById("walkthroughTitle").innerText = `Pedagogical Framework: ${guide.title} (${guide.difficulty})`;
+                container.innerHTML = `
+                    <div style="margin-bottom: 10px;"><strong>1. Understand the Requirement:</strong> ${escapeHtml(guide.understanding)}</div>
+                    <div style="margin-bottom: 10px;"><strong>2. Inputs & Outputs:</strong> <code>${escapeHtml(guide.inputs_and_outputs)}</code></div>
+                    <div style="margin-bottom: 10px;"><strong>3. Scale & Constraints:</strong> ${escapeHtml(guide.constraints)}</div>
+                    <div style="margin-bottom: 10px;"><strong>4. Algorithmic Patterns:</strong> <span style="color: var(--primary);">${escapeHtml((guide.relevant_patterns || []).join(", "))}</span></div>
+                    <div style="margin-bottom: 10px;">
+                        <strong>5. Step-by-Step Approach:</strong>
+                        <ul style="margin-left: 20px; margin-top: 4px;">
+                            ${(guide.step_by_step_approach || []).map(s => `<li>${escapeHtml(s)}</li>`).join("")}
+                        </ul>
+                    </div>
+                    <div style="margin-bottom: 10px;"><strong>6. Complexity Target:</strong> ${escapeHtml(guide.complexity_considerations)}</div>
+                    <div style="margin-bottom: 10px;">
+                        <strong>7. Test Cases to Verify:</strong>
+                        <ul style="margin-left: 20px; margin-top: 4px;">
+                            ${(guide.test_recommendations || []).map(t => `<li>${escapeHtml(t)}</li>`).join("")}
+                        </ul>
+                    </div>
+                    <div style="margin-top: 12px; color: #a7f3d0; font-style: italic;"><strong>8. Independent Execution:</strong> ${escapeHtml(guide.encouragement)}</div>
+                `;
+            } catch (err) {
+                container.innerHTML = '<p style="color: var(--danger);">Failed to load guidance.</p>';
+            }
+        }
+
+        async function fetchNextProgressiveHint() {
+            const pid = document.getElementById("coachProblemSelect").value;
+            const nextTier = currentHintTier + 1;
+            if (nextTier > 4) {
+                showAlert("All 4 hints have already been revealed for this problem.", false);
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/coach/problem/${pid}/hint?tier=${nextTier}`);
+                const hint = await res.json();
+                if (!res.ok) {
+                    showAlert(hint.error || "Failed to load hint", false);
+                    return;
+                }
+
+                currentHintTier = nextTier;
+                const hintContainer = document.getElementById("coachHintContainer");
+                document.getElementById("coachHintTierLabel").innerText = `Hint Tier ${hint.tier}: ${hint.tier_name}`;
+                document.getElementById("coachHintRemaining").innerText = `Progress: Tier ${hint.tier} of 4`;
+                document.getElementById("coachHintText").innerText = hint.content;
+                hintContainer.style.display = "block";
+                showAlert(`Revealed Hint Tier ${hint.tier}: ${hint.tier_name}`);
+            } catch (err) {
+                showAlert("Error fetching hint", false);
+            }
+        }
+
+        function resetHintProgression() {
+            currentHintTier = 0;
+            const hintContainer = document.getElementById("coachHintContainer");
+            if (hintContainer) {
+                hintContainer.style.display = "none";
+                document.getElementById("coachHintText").innerText = "";
+            }
+        }
+
+        // Initialize Coach on window load
+        window.addEventListener("DOMContentLoaded", () => {
+            initCoach();
+        });
 
         // Close modal on outside click
         window.onclick = function(event) {
@@ -1057,6 +1228,62 @@ def create_app(
             mimetype="text/csv",
             headers={"Content-Disposition": "attachment;filename=learning_analytics.csv"},
         )
+
+    @app.route("/api/coach/overview")
+    def api_coach_overview():
+        """Retrieve personalized coaching summary, recommended problem, and observations."""
+        coach = OfflineCodingCoach(
+            progress_db_path=db_path,
+            tracking_db_path=tracker_path,
+            language="python",
+        )
+        overview = coach.get_coach_overview()
+        from dataclasses import asdict
+        return jsonify(asdict(overview))
+
+    @app.route("/api/coach/problem/<problem_id>")
+    def api_coach_problem_guide(problem_id: str):
+        """Retrieve 8-point pedagogical problem-solving guide."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", problem_id):
+            return jsonify({"error": "Invalid problem identifier format"}), 400
+
+        coach = OfflineCodingCoach(
+            progress_db_path=db_path,
+            tracking_db_path=tracker_path,
+            language="python",
+        )
+        guide = coach.get_problem_guidance(problem_id)
+        if not guide:
+            return jsonify({"error": f"Problem '{problem_id}' not found"}), 404
+
+        from dataclasses import asdict
+        return jsonify(asdict(guide))
+
+    @app.route("/api/coach/problem/<problem_id>/hint")
+    def api_coach_problem_hint(problem_id: str):
+        """Retrieve progressive hint tier (1 to 4) for a problem."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", problem_id):
+            return jsonify({"error": "Invalid problem identifier format"}), 400
+
+        try:
+            tier = int(request.args.get("tier", 1))
+        except ValueError:
+            return jsonify({"error": "Invalid tier parameter"}), 400
+
+        if tier < 1 or tier > 4:
+            return jsonify({"error": "Tier must be an integer between 1 and 4"}), 400
+
+        coach = OfflineCodingCoach(
+            progress_db_path=db_path,
+            tracking_db_path=tracker_path,
+            language="python",
+        )
+        hint = coach.get_progressive_hint(problem_id, tier=tier)
+        if not hint:
+            return jsonify({"error": f"Hint not available for problem '{problem_id}'"}), 404
+
+        from dataclasses import asdict
+        return jsonify(asdict(hint))
 
     return app
 

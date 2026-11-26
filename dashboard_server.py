@@ -58,6 +58,20 @@ from intelligence.portfolio import (
     PortfolioConfig,
     PortfolioManager,
 )
+from intelligence.preparation_planner import (
+    IntensityLevel,
+    PlanProgress,
+    PlanStatus,
+    PlannerSettings,
+    PreparationDay,
+    PreparationPlan,
+    PreparationPlanner,
+    PreparationTask,
+    PreparationWeek,
+    TaskPriority,
+    TaskStatus,
+    TaskType,
+)
 from intelligence.revision import (
     RevisionOutcome,
     RevisionStatus,
@@ -1455,6 +1469,141 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 </div>
                 <div id="iaGoalsList" style="font-size: 0.85rem; color: var(--text-muted);">
                     No interview practice goals configured yet.
+                </div>
+            </div>
+        </div>
+
+        <!-- Milestone 6.3.21: Adaptive Interview Preparation Planner Card -->
+        <div class="card" style="margin-bottom: 24px;">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div>
+                    <h2 class="card-title" style="margin: 0; font-size: 1.15rem; display: flex; align-items: center; gap: 8px;">
+                        <span>🗓️ Adaptive Interview Preparation Planner</span>
+                        <span id="planStatusBadge" class="badge" style="background: var(--surface-light); color: var(--text-muted); font-size: 0.75rem; padding: 2px 8px; border-radius: 4px;">No Plan</span>
+                    </h2>
+                    <p style="margin: 4px 0 0 0; font-size: 0.85rem; color: var(--text-muted);">
+                        Evidence-driven daily & weekly interview preparation schedules dynamically adapted to your progress, missed tasks, and weak areas.
+                    </p>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button class="btn btn-secondary btn-sm" onclick="previewReplan()" id="btnPreviewReplan">⚡ Preview Adaptive Replan</button>
+                    <button class="btn btn-primary btn-sm" onclick="generatePreparationPlan()" id="btnGeneratePlan">🎯 Generate New Plan</button>
+                </div>
+            </div>
+
+            <!-- Planner Configuration Bar -->
+            <div style="background: rgba(15, 23, 42, 0.5); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <h3 style="font-size: 0.85rem; color: var(--text); margin: 0; text-transform: uppercase; letter-spacing: 0.5px;">Plan Configuration</h3>
+                    <button class="btn btn-secondary btn-sm" style="font-size: 0.75rem; padding: 2px 8px;" onclick="savePlannerSettings()">Save Settings</button>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; font-size: 0.8rem;">
+                    <div>
+                        <label style="color: var(--text-muted); display: block; margin-bottom: 3px;">Daily Study (Min)</label>
+                        <input type="number" id="plannerDailyMinutes" value="60" min="15" max="360" style="width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px;">
+                    </div>
+                    <div>
+                        <label style="color: var(--text-muted); display: block; margin-bottom: 3px;">Horizon</label>
+                        <select id="plannerHorizonDays" style="width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px;">
+                            <option value="7">7 Days (1 Week)</option>
+                            <option value="14">14 Days (2 Weeks)</option>
+                            <option value="30">30 Days (1 Month)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="color: var(--text-muted); display: block; margin-bottom: 3px;">Track</label>
+                        <select id="plannerTargetTrack" style="width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px;">
+                            <option value="intermediate">Intermediate</option>
+                            <option value="beginner">Beginner</option>
+                            <option value="advanced">Advanced</option>
+                            <option value="mixed">Mixed</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="color: var(--text-muted); display: block; margin-bottom: 3px;">Language</label>
+                        <select id="plannerLanguage" style="width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px;">
+                            <option value="python">Python</option>
+                            <option value="cpp">C++</option>
+                            <option value="c">C</option>
+                            <option value="java">Java</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="color: var(--text-muted); display: block; margin-bottom: 3px;">Target Score</label>
+                        <input type="number" id="plannerTargetScore" value="80" min="50" max="100" style="width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px;">
+                    </div>
+                    <div>
+                        <label style="color: var(--text-muted); display: block; margin-bottom: 3px;">Intensity</label>
+                        <select id="plannerIntensity" style="width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px;">
+                            <option value="moderate">Moderate</option>
+                            <option value="light">Light</option>
+                            <option value="intensive">Intensive</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Active Plan Progress Summary -->
+            <div id="planSummaryBox" style="background: rgba(30, 41, 59, 0.4); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                    <div>
+                        <h3 id="activePlanTitle" style="margin: 0; font-size: 0.95rem; color: var(--text);">No Active Preparation Plan</h3>
+                        <span id="activePlanDateRange" style="font-size: 0.8rem; color: var(--text-muted);">Configure settings and generate a plan to begin structured preparation.</span>
+                    </div>
+                    <div id="planActionBtnContainer" style="display: flex; gap: 6px;">
+                        <!-- Apply plan button if draft -->
+                    </div>
+                </div>
+                <!-- Progress bar -->
+                <div style="margin-bottom: 10px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 4px;">
+                        <span style="color: var(--text-muted);">Tasks Completed: <strong id="planTasksCount" style="color: var(--text);">0 / 0</strong></span>
+                        <span id="planPctText" style="color: var(--primary); font-weight: 600;">0%</span>
+                    </div>
+                    <div style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+                        <div id="planProgressBar" style="height: 100%; width: 0%; background: var(--primary); border-radius: 3px; transition: width 0.3s ease;"></div>
+                    </div>
+                </div>
+                <!-- Mini Stats Grid -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; font-size: 0.8rem;">
+                    <div style="background: rgba(15, 23, 42, 0.4); padding: 6px 10px; border-radius: 4px;">
+                        <span style="color: var(--text-muted); display: block;">Planned Time</span>
+                        <strong id="statPlannedTime" style="color: var(--text);">0m</strong>
+                    </div>
+                    <div style="background: rgba(15, 23, 42, 0.4); padding: 6px 10px; border-radius: 4px;">
+                        <span style="color: var(--text-muted); display: block;">Actual Time</span>
+                        <strong id="statActualTime" style="color: var(--text);">0m</strong>
+                    </div>
+                    <div style="background: rgba(15, 23, 42, 0.4); padding: 6px 10px; border-radius: 4px;">
+                        <span style="color: var(--text-muted); display: block;">Study Streak</span>
+                        <strong id="statStreakDays" style="color: var(--success);">0 days</strong>
+                    </div>
+                    <div style="background: rgba(15, 23, 42, 0.4); padding: 6px 10px; border-radius: 4px;">
+                        <span style="color: var(--text-muted); display: block;">Overdue Tasks</span>
+                        <strong id="statOverdueTasks" style="color: var(--warning);">0</strong>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Replan Preview Alert Box (Hidden by default) -->
+            <div id="replanPreviewBox" style="display: none; background: rgba(234, 179, 8, 0.1); border: 1px solid rgba(234, 179, 8, 0.4); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                    <div>
+                        <h4 style="margin: 0; color: #fde047; font-size: 0.9rem;">Adaptive Replan Preview</h4>
+                        <p id="replanExplanation" style="margin: 4px 0 0 0; font-size: 0.8rem; color: var(--text-muted);"></p>
+                    </div>
+                    <div style="display: flex; gap: 6px;">
+                        <button class="btn btn-secondary btn-sm" onclick="dismissReplanPreview()">Dismiss</button>
+                        <button class="btn btn-primary btn-sm" onclick="applyReplan()">Apply Adaptive Changes</button>
+                    </div>
+                </div>
+                <div id="replanChangesList" style="font-size: 0.8rem; color: var(--text);"></div>
+            </div>
+
+            <!-- Weekly Strategy Cards & Daily Schedule -->
+            <div id="plannerScheduleContainer">
+                <div style="color: var(--text-muted); font-size: 0.85rem; text-align: center; padding: 20px;">
+                    No preparation schedule loaded. Click "Generate New Plan" to create your customized preparation schedule.
                 </div>
             </div>
         </div>
@@ -3512,7 +3661,322 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             reloadInterviewState();
             reloadInterviewHistory();
             reloadInterviewAnalytics();
+            reloadPreparationPlanner();
         });
+
+        // =========================================================================
+        // Milestone 6.3.21: Adaptive Interview Preparation Planner Client Functions
+        // =========================================================================
+
+        let currentActivePlanId = null;
+
+        async function reloadPreparationPlanner() {
+            try {
+                // Fetch settings
+                const setRes = await fetch("/api/preparation-planner/settings");
+                if (setRes.ok) {
+                    const settings = await setRes.json();
+                    document.getElementById("plannerDailyMinutes").value = settings.daily_minutes || 60;
+                    document.getElementById("plannerHorizonDays").value = settings.horizon_days || 7;
+                    document.getElementById("plannerTargetTrack").value = settings.target_track || "intermediate";
+                    document.getElementById("plannerLanguage").value = settings.language || "python";
+                    document.getElementById("plannerTargetScore").value = settings.target_score || 80;
+                    document.getElementById("plannerIntensity").value = settings.intensity || "moderate";
+                }
+
+                // Fetch active plan
+                const planRes = await fetch("/api/preparation-planner");
+                if (planRes.ok) {
+                    const data = await planRes.json();
+                    renderPreparationPlan(data.plan);
+                }
+            } catch (err) {
+                console.error("Failed to reload preparation planner:", err);
+            }
+        }
+
+        async function savePlannerSettings() {
+            try {
+                const payload = {
+                    daily_minutes: parseInt(document.getElementById("plannerDailyMinutes").value, 10),
+                    horizon_days: parseInt(document.getElementById("plannerHorizonDays").value, 10),
+                    target_track: document.getElementById("plannerTargetTrack").value,
+                    language: document.getElementById("plannerLanguage").value,
+                    target_score: parseFloat(document.getElementById("plannerTargetScore").value),
+                    intensity: document.getElementById("plannerIntensity").value
+                };
+
+                const res = await fetch("/api/preparation-planner/settings", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    showToast("Planner settings saved successfully!", "success");
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Failed to save settings", "error");
+                }
+            } catch (err) {
+                showToast("Error saving planner settings", "error");
+            }
+        }
+
+        async function generatePreparationPlan() {
+            try {
+                showToast("Synthesizing evidence-driven preparation schedule...", "info");
+                const res = await fetch("/api/preparation-planner/generate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({})
+                });
+
+                if (res.ok) {
+                    const plan = await res.json();
+                    renderPreparationPlan(plan);
+                    showToast("New preparation plan generated!", "success");
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Failed to generate plan", "error");
+                }
+            } catch (err) {
+                showToast("Error generating preparation plan", "error");
+            }
+        }
+
+        async function applyPreparationPlan(planId) {
+            try {
+                const res = await fetch(`/api/preparation-planner/plan/${planId}/apply`, {
+                    method: "POST"
+                });
+
+                if (res.ok) {
+                    const plan = await res.json();
+                    renderPreparationPlan(plan);
+                    showToast("Plan activated successfully!", "success");
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Failed to apply plan", "error");
+                }
+            } catch (err) {
+                showToast("Error applying plan", "error");
+            }
+        }
+
+        async function completePlanTask(taskId) {
+            try {
+                const res = await fetch(`/api/preparation-planner/task/${taskId}/complete`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({})
+                });
+
+                if (res.ok) {
+                    showToast("Task completed!", "success");
+                    reloadPreparationPlanner();
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Failed to complete task", "error");
+                }
+            } catch (err) {
+                showToast("Error completing task", "error");
+            }
+        }
+
+        async function skipPlanTask(taskId) {
+            try {
+                const reason = prompt("Optional reason for skipping this task:") || "Skipped by learner";
+                const res = await fetch(`/api/preparation-planner/task/${taskId}/skip`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ reason: reason })
+                });
+
+                if (res.ok) {
+                    showToast("Task marked as skipped.", "warning");
+                    reloadPreparationPlanner();
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Failed to skip task", "error");
+                }
+            } catch (err) {
+                showToast("Error skipping task", "error");
+            }
+        }
+
+        async function previewReplan() {
+            try {
+                const res = await fetch("/api/preparation-planner/replan/preview", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({})
+                });
+
+                if (res.ok) {
+                    const preview = await res.json();
+                    const box = document.getElementById("replanPreviewBox");
+                    const exp = document.getElementById("replanExplanation");
+                    const list = document.getElementById("replanChangesList");
+
+                    exp.innerText = preview.explanation;
+                    if (preview.rescheduled_tasks && preview.rescheduled_tasks.length > 0) {
+                        list.innerHTML = `
+                            <div style="margin-top: 8px;">
+                                <strong>Proposed Task Rescheduling:</strong>
+                                <ul style="margin: 4px 0 0 16px; padding: 0;">
+                                    ${preview.rescheduled_tasks.map(t => `<li><strong>${t.title}</strong>: moved from ${t.old_date} &rarr; ${t.new_date}</li>`).join("")}
+                                </ul>
+                            </div>
+                        `;
+                    } else {
+                        list.innerHTML = `<div style="margin-top: 6px; color: var(--text-muted);">Current schedule is fully on track. No tasks need rescheduling.</div>`;
+                    }
+                    box.style.display = "block";
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "No active plan found to replan.", "warning");
+                }
+            } catch (err) {
+                showToast("Error previewing replan", "error");
+            }
+        }
+
+        function dismissReplanPreview() {
+            document.getElementById("replanPreviewBox").style.display = "none";
+        }
+
+        async function applyReplan() {
+            try {
+                const res = await fetch("/api/preparation-planner/replan/apply", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({})
+                });
+
+                if (res.ok) {
+                    dismissReplanPreview();
+                    const updatedPlan = await res.json();
+                    renderPreparationPlan(updatedPlan);
+                    showToast("Adaptive plan changes applied successfully!", "success");
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Failed to apply replan", "error");
+                }
+            } catch (err) {
+                showToast("Error applying replan", "error");
+            }
+        }
+
+        function renderPreparationPlan(plan) {
+            if (!plan) return;
+            currentActivePlanId = plan.plan_id;
+
+            // Update badge & title
+            const badge = document.getElementById("planStatusBadge");
+            if (badge) {
+                badge.innerText = plan.status.toUpperCase();
+                badge.style.background = plan.status === 'active' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(234, 179, 8, 0.2)';
+                badge.style.color = plan.status === 'active' ? 'var(--success)' : '#fde047';
+            }
+
+            document.getElementById("activePlanTitle").innerText = plan.title;
+            document.getElementById("activePlanDateRange").innerText = `${plan.start_date} to ${plan.end_date} • ${plan.horizon_days} Day Horizon`;
+
+            const btnContainer = document.getElementById("planActionBtnContainer");
+            if (btnContainer) {
+                if (plan.status === 'draft') {
+                    btnContainer.innerHTML = `<button class="btn btn-primary btn-sm" onclick="applyPreparationPlan('${plan.plan_id}')">🚀 Activate This Plan</button>`;
+                } else {
+                    btnContainer.innerHTML = `<span style="font-size: 0.8rem; color: var(--success); font-weight: 600;">Active Schedule</span>`;
+                }
+            }
+
+            // Progress stats
+            const prog = plan.progress;
+            document.getElementById("planTasksCount").innerText = `${prog.tasks_completed} / ${prog.tasks_planned}`;
+            document.getElementById("planPctText").innerText = `${prog.completion_ratio_pct}%`;
+            document.getElementById("planProgressBar").style.width = `${prog.completion_ratio_pct}%`;
+
+            document.getElementById("statPlannedTime").innerText = `${prog.planned_minutes}m`;
+            document.getElementById("statActualTime").innerText = `${prog.actual_recorded_minutes}m`;
+            document.getElementById("statStreakDays").innerText = `${prog.current_streak_days} days`;
+            document.getElementById("statOverdueTasks").innerText = `${prog.tasks_overdue}`;
+
+            // Render schedule container
+            const container = document.getElementById("plannerScheduleContainer");
+            if (!container) return;
+
+            let html = "";
+            (plan.weeks || []).forEach(w => {
+                html += `
+                    <div style="background: rgba(15, 23, 42, 0.4); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
+                            <div>
+                                <h3 style="margin: 0; font-size: 0.95rem; color: var(--text);">Week ${w.week_number}: ${w.start_date} &rarr; ${w.end_date}</h3>
+                                <p style="margin: 2px 0 0 0; font-size: 0.8rem; color: var(--text-muted);">${w.week_objective}</p>
+                            </div>
+                            <div style="display: flex; gap: 6px; font-size: 0.75rem;">
+                                ${(w.focus_topics || []).map(t => `<span class="badge" style="background: rgba(59, 130, 246, 0.2); color: #93c5fd; padding: 2px 6px; border-radius: 4px;">${t}</span>`).join("")}
+                            </div>
+                        </div>
+
+                        <!-- Days list -->
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            ${(w.days || []).map(d => `
+                                <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid var(--border); border-radius: 6px; padding: 10px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <strong style="color: var(--text); font-size: 0.85rem;">${d.day_name}, ${d.day_date}</strong>
+                                            <span style="font-size: 0.75rem; padding: 1px 6px; border-radius: 4px; background: ${d.is_study_day ? 'rgba(59, 130, 246, 0.2)' : 'rgba(100, 116, 139, 0.2)'}; color: ${d.is_study_day ? '#93c5fd' : 'var(--text-muted)'};">
+                                                ${d.is_study_day ? `${d.planned_minutes}m Planned` : 'Rest Day'}
+                                            </span>
+                                        </div>
+                                        <span style="font-size: 0.75rem; color: var(--text-muted);">
+                                            ${d.tasks.length} task${d.tasks.length !== 1 ? 's' : ''}
+                                        </span>
+                                    </div>
+
+                                    <!-- Tasks list for day -->
+                                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                                        ${d.tasks.map(t => {
+                                            const isDone = t.status === 'completed';
+                                            const isSkip = t.status === 'skipped';
+                                            const prioColor = t.priority === 'P0' ? '#ef4444' : (t.priority === 'P1' ? '#3b82f6' : '#10b981');
+                                            return `
+                                                <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.6); padding: 8px 10px; border-radius: 4px; border-left: 3px solid ${prioColor};">
+                                                    <div style="flex: 1; margin-right: 12px;">
+                                                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px;">
+                                                            <span style="font-size: 0.7rem; font-weight: bold; color: ${prioColor};">[${t.priority}]</span>
+                                                            <strong style="font-size: 0.85rem; color: ${isDone ? 'var(--text-muted)' : 'var(--text)'}; text-decoration: ${isDone ? 'line-through' : 'none'};">
+                                                                ${t.title}
+                                                            </strong>
+                                                            <span style="font-size: 0.75rem; color: var(--text-muted);">(${t.estimated_minutes}m)</span>
+                                                        </div>
+                                                        <div style="font-size: 0.75rem; color: var(--text-muted); line-height: 1.3;">
+                                                            ${t.description} &bull; <em style="color: #cbd5e1;">Reason: ${t.reason}</em>
+                                                        </div>
+                                                    </div>
+                                                    <div style="display: flex; gap: 6px; align-items: center;">
+                                                        ${isDone ? `<span style="font-size: 0.8rem; color: var(--success); font-weight: 600;">&#10003; Done</span>` :
+                                                          isSkip ? `<span style="font-size: 0.8rem; color: var(--text-muted);">Skipped</span>` : `
+                                                            <button class="btn btn-sm btn-primary" style="font-size: 0.75rem; padding: 2px 8px;" onclick="completePlanTask('${t.task_id}')">Done</button>
+                                                            <button class="btn btn-sm btn-secondary" style="font-size: 0.75rem; padding: 2px 8px;" onclick="skipPlanTask('${t.task_id}')">Skip</button>
+                                                        `}
+                                                    </div>
+                                                </div>
+                                            `;
+                                        }).join("")}
+                                    </div>
+                                </div>
+                            `).join("")}
+                        </div>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+        }
 
         // Close modal on outside click
         window.onclick = function(event) {
@@ -5312,6 +5776,260 @@ def create_app(
             end_date=custom_end,
         )
         return jsonify(interviews[:limit])
+
+    # -------------------------------------------------------------------------
+    # Milestone 6.3.21: Adaptive Interview Preparation Planner APIs
+    # -------------------------------------------------------------------------
+
+    @app.route("/api/preparation-planner")
+    def api_preparation_planner_active():
+        """Retrieve active preparation plan and current settings."""
+        planner = PreparationPlanner(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        settings = planner.get_settings()
+        plan = planner.get_active_plan()
+        from dataclasses import asdict
+        return jsonify({
+            "settings": asdict(settings),
+            "plan": asdict(plan) if plan else None,
+        })
+
+    @app.route("/api/preparation-planner/settings", methods=["GET", "POST"])
+    def api_preparation_planner_settings():
+        """Get or save planner settings."""
+        planner = PreparationPlanner(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        from dataclasses import asdict
+
+        if request.method == "POST":
+            data = request.get_json(silent=True) or {}
+            try:
+                current_settings = planner.get_settings()
+                daily_min = data.get("daily_minutes", current_settings.daily_minutes)
+                horizon = data.get("horizon_days", current_settings.horizon_days)
+                pref_days = data.get("preferred_days", current_settings.preferred_days)
+                sessions = data.get("sessions_per_day", current_settings.sessions_per_day)
+                track = data.get("target_track", current_settings.target_track)
+                lang = data.get("language", current_settings.language)
+                score = data.get("target_score", current_settings.target_score)
+                intensity = data.get("intensity", current_settings.intensity)
+
+                new_settings = PlannerSettings(
+                    daily_minutes=int(daily_min),
+                    horizon_days=int(horizon),
+                    preferred_days=pref_days,
+                    sessions_per_day=int(sessions),
+                    target_track=str(track),
+                    language=str(lang),
+                    target_score=float(score),
+                    intensity=str(intensity),
+                )
+                saved = planner.save_settings(new_settings)
+                return jsonify(asdict(saved)), 200
+            except ValueError as e:
+                return jsonify({"error": str(e)}), 400
+
+        # GET request
+        settings = planner.get_settings()
+        return jsonify(asdict(settings))
+
+    @app.route("/api/preparation-planner/generate", methods=["POST"])
+    def api_preparation_planner_generate():
+        """Generate a new evidence-driven interview preparation plan."""
+        data = request.get_json(silent=True) or {}
+        planner = PreparationPlanner(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        from dataclasses import asdict
+
+        try:
+            settings = None
+            if "settings" in data and isinstance(data["settings"], dict):
+                s_dict = data["settings"]
+                settings = PlannerSettings(
+                    daily_minutes=int(s_dict.get("daily_minutes", 60)),
+                    horizon_days=int(s_dict.get("horizon_days", 7)),
+                    preferred_days=s_dict.get("preferred_days", list(ALL_WEEKDAYS)),
+                    sessions_per_day=int(s_dict.get("sessions_per_day", 2)),
+                    target_track=s_dict.get("target_track", "intermediate"),
+                    language=s_dict.get("language", "python"),
+                    target_score=float(s_dict.get("target_score", 80.0)),
+                    intensity=s_dict.get("intensity", "moderate"),
+                )
+
+            start_date = data.get("start_date")
+            title = data.get("title")
+
+            plan = planner.generate_plan(
+                settings=settings,
+                start_date=start_date,
+                title=title,
+            )
+            saved_plan = planner.save_plan(plan)
+            return jsonify(asdict(saved_plan)), 201
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/preparation-planner/plans")
+    def api_preparation_planner_list_plans():
+        """List summary of historical and active preparation plans."""
+        planner = PreparationPlanner(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        plans = planner.list_plans()
+        return jsonify(plans)
+
+    @app.route("/api/preparation-planner/plan/<plan_id>")
+    def api_preparation_planner_get_plan(plan_id: str):
+        """Retrieve full details of a specific preparation plan."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", plan_id):
+            return jsonify({"error": "Invalid plan_id format"}), 400
+
+        planner = PreparationPlanner(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        plan = planner.get_plan(plan_id)
+        if not plan:
+            return jsonify({"error": f"Plan '{plan_id}' not found."}), 404
+
+        from dataclasses import asdict
+        return jsonify(asdict(plan))
+
+    @app.route("/api/preparation-planner/plan/<plan_id>/preview")
+    def api_preparation_planner_preview_plan(plan_id: str):
+        """Preview structured daily and weekly schedule for a plan."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", plan_id):
+            return jsonify({"error": "Invalid plan_id format"}), 400
+
+        planner = PreparationPlanner(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        plan = planner.get_plan(plan_id)
+        if not plan:
+            return jsonify({"error": f"Plan '{plan_id}' not found."}), 404
+
+        from dataclasses import asdict
+        return jsonify(asdict(plan))
+
+    @app.route("/api/preparation-planner/plan/<plan_id>/apply", methods=["POST"])
+    def api_preparation_planner_apply_plan(plan_id: str):
+        """Explicitly activate a generated preparation plan."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", plan_id):
+            return jsonify({"error": "Invalid plan_id format"}), 400
+
+        planner = PreparationPlanner(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            active_plan = planner.apply_plan(plan_id)
+            from dataclasses import asdict
+            return jsonify(asdict(active_plan)), 200
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 404
+
+    @app.route("/api/preparation-planner/plan/<plan_id>/progress")
+    def api_preparation_planner_plan_progress(plan_id: str):
+        """Retrieve progress metrics and streaks for a plan."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", plan_id):
+            return jsonify({"error": "Invalid plan_id format"}), 400
+
+        planner = PreparationPlanner(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        plan = planner.get_plan(plan_id)
+        if not plan:
+            return jsonify({"error": f"Plan '{plan_id}' not found."}), 404
+
+        from dataclasses import asdict
+        return jsonify(asdict(plan.progress))
+
+    @app.route("/api/preparation-planner/task/<task_id>/complete", methods=["POST"])
+    def api_preparation_planner_complete_task(task_id: str):
+        """Mark a preparation task as completed with optional actual minutes."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", task_id):
+            return jsonify({"error": "Invalid task_id format"}), 400
+
+        data = request.get_json(silent=True) or {}
+        actual_min = data.get("actual_minutes")
+
+        planner = PreparationPlanner(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            act_int = int(actual_min) if actual_min is not None else None
+            task = planner.complete_task(task_id, actual_minutes=act_int)
+            from dataclasses import asdict
+            return jsonify(asdict(task)), 200
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 404
+
+    @app.route("/api/preparation-planner/task/<task_id>/skip", methods=["POST"])
+    def api_preparation_planner_skip_task(task_id: str):
+        """Mark a preparation task as skipped."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", task_id):
+            return jsonify({"error": "Invalid task_id format"}), 400
+
+        data = request.get_json(silent=True) or {}
+        reason = data.get("reason")
+
+        planner = PreparationPlanner(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            task = planner.skip_task(task_id, reason=reason)
+            from dataclasses import asdict
+            return jsonify(asdict(task)), 200
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/preparation-planner/replan/preview", methods=["POST"])
+    def api_preparation_planner_replan_preview():
+        """Preview adaptive schedule adjustments without modifying active schedule."""
+        data = request.get_json(silent=True) or {}
+        plan_id = data.get("plan_id")
+        if plan_id and not re.match(r"^[a-zA-Z0-9_\-]+$", plan_id):
+            return jsonify({"error": "Invalid plan_id format"}), 400
+
+        planner = PreparationPlanner(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            preview = planner.preview_replan(plan_id=plan_id)
+            return jsonify(preview), 200
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/preparation-planner/replan/apply", methods=["POST"])
+    def api_preparation_planner_replan_apply():
+        """Apply adaptive schedule adjustments to the active preparation plan."""
+        data = request.get_json(silent=True) or {}
+        plan_id = data.get("plan_id")
+        if plan_id and not re.match(r"^[a-zA-Z0-9_\-]+$", plan_id):
+            return jsonify({"error": "Invalid plan_id format"}), 400
+
+        planner = PreparationPlanner(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            updated_plan = planner.apply_replan(plan_id=plan_id)
+            from dataclasses import asdict
+            return jsonify(asdict(updated_plan)), 200
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
 
     return app
 

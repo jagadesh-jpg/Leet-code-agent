@@ -288,6 +288,8 @@ class SpacedRevisionEngine:
         )
         return items
 
+    get_revision_queue = list_queue
+
     def record_revision_outcome(
         self,
         problem_id: str,

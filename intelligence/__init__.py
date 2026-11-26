@@ -1,5 +1,11 @@
 """Intelligence and problem selection package for LeetCode Agent."""
 
+from intelligence.planner import (
+    LearningSessionPlan,
+    PlannedProblem,
+    SessionPlanner,
+    SessionProblemRole,
+)
 from intelligence.selector import ProblemScoreBreakdown, ProblemSelector
 from intelligence.topics import (
     CURATED_PROBLEM_TOPICS,
@@ -17,4 +23,8 @@ __all__ = [
     "get_problem_topics",
     "STANDARD_TOPICS",
     "CURATED_PROBLEM_TOPICS",
+    "PlannedProblem",
+    "LearningSessionPlan",
+    "SessionProblemRole",
+    "SessionPlanner",
 ]

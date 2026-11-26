@@ -230,6 +230,17 @@ def main():
         help="Display offline algorithm topic coverage, performance metrics, and learning opportunities",
     )
     parser.add_argument(
+        "--plan",
+        action="store_true",
+        help="Generate a personalized, balanced offline learning session plan (preview-only)",
+    )
+    parser.add_argument(
+        "--session-size",
+        type=int,
+        default=3,
+        help="Number of problems to include in the learning session plan (default: 3)",
+    )
+    parser.add_argument(
         "--all",
         action="store_true",
         help="Include already solved problems in selection ranking (default: False)",
@@ -294,6 +305,48 @@ def main():
             print(f"  Recommendations: Expand topic coverage by practicing: {', '.join(untouched[:3])}")
         else:
             print("  Recommendations: All covered topics are proficient or mastered.")
+        print("=" * 80 + "\n")
+        sys.exit(0)
+
+    if args.plan:
+        from intelligence.planner import SessionPlanner
+        from problems import load_problems
+        planner = SessionPlanner(
+            db_path=args.db_path,
+            language=args.language,
+            preferred_difficulty=args.difficulty,
+        )
+        candidates = load_problems()
+        session_plan = planner.plan_session(
+            candidates,
+            session_size=args.session_size,
+            skip_solved=not args.all,
+        )
+
+        print("=" * 80)
+        print("  PERSONALIZED LEARNING SESSION PLANNER (PREVIEW-ONLY)")
+        print("=" * 80)
+        print(f"  Target Language: {args.language}")
+        print(f"  Planned Size:    {session_plan.total_problems} / {session_plan.target_size} problem(s)")
+        print(f"  Database Path:   {args.db_path or 'Default progress.db'}")
+        if args.difficulty:
+            print(f"  Preference:      {args.difficulty.title()} difficulty")
+        print("-" * 80)
+        print(f"{'#':<3} {'ROLE':<15} {'ID':<25} {'DIFF':<8} {'SCORE':<7} {'TOPICS':<20}")
+        print("-" * 80)
+        if not session_plan.planned_problems:
+            print("  (No eligible problems found to construct a session.)")
+        for item in session_plan.planned_problems:
+            role_label = item.role.value.replace("_", " ").title()
+            topics_str = ", ".join(item.topics) if item.topics else "Standard"
+            print(f"{item.rank:<3} {role_label:<15} {item.problem_id:<25} {item.difficulty:<8} {item.priority_score:<7.1f} {topics_str:<20}")
+            print(f"    -> Reason: {item.reason}")
+        print("-" * 80)
+        print(f"  Summary: {session_plan.session_summary}")
+        if session_plan.covered_topics:
+            print(f"  Topic Coverage: {', '.join(session_plan.covered_topics)}")
+        print("=" * 80)
+        print("  NOTE: This is a preview-only plan. No problems were executed or submitted.")
         print("=" * 80 + "\n")
         sys.exit(0)
 

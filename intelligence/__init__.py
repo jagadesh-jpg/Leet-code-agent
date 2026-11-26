@@ -16,6 +16,15 @@ from intelligence.coach import (
     ProblemCoachingGuide,
     ProgressiveHint,
 )
+from intelligence.goals import (
+    GoalPlanRecommendation,
+    GoalStatus,
+    GoalType,
+    GoalsAnalyticsReport,
+    GoalsManager,
+    LearningGoal,
+    MilestoneAchievement,
+)
 from intelligence.insights import (
     DailyActivityMetric,
     LearningInsightsEngine,
@@ -93,4 +102,11 @@ __all__ = [
     "RevisionOutcome",
     "RevisionItem",
     "RevisionAnalytics",
+    "GoalsManager",
+    "GoalType",
+    "GoalStatus",
+    "LearningGoal",
+    "MilestoneAchievement",
+    "GoalPlanRecommendation",
+    "GoalsAnalyticsReport",
 ]

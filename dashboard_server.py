@@ -20,6 +20,15 @@ from flask import Flask, Response, jsonify, render_template_string, request
 from dashboard import get_dashboard_data, _get_learning_intelligence_data
 from intelligence.adaptive import AdaptiveLearningEngine
 from intelligence.coach import OfflineCodingCoach
+from intelligence.goals import (
+    GoalPlanRecommendation,
+    GoalStatus,
+    GoalType,
+    GoalsAnalyticsReport,
+    GoalsManager,
+    LearningGoal,
+    MilestoneAchievement,
+)
 from intelligence.insights import LearningInsightsEngine
 from intelligence.planner import SessionPlanner
 from intelligence.revision import (
@@ -631,6 +640,87 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             </table>
         </div>
 
+        <!-- Personal Learning Goals & Milestone Achievements (Milestone 6.3.13) -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Learning Goals & Milestone Achievements</h2>
+                <button class="btn btn-secondary btn-sm" onclick="reloadGoalsAndMilestones()">Refresh Goals</button>
+            </div>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px;">
+                Measurable, offline goal management and verified milestone tracking. Progress is calculated strictly from verified local problem attempts and learning session records.
+            </p>
+
+            <div class="grid-stats" style="margin-bottom: 16px;">
+                <div class="stat-card" style="padding: 14px;">
+                    <div class="label">Active Goals</div>
+                    <div class="value" id="goalActiveCount" style="font-size: 1.5rem; color: #38bdf8;">0</div>
+                    <div class="subtext">In-progress learning targets</div>
+                </div>
+                <div class="stat-card" style="padding: 14px;">
+                    <div class="label">Completed Goals</div>
+                    <div class="value" id="goalCompletedCount" style="font-size: 1.5rem; color: #86efac;">0</div>
+                    <div class="subtext">Successfully fulfilled targets</div>
+                </div>
+                <div class="stat-card" style="padding: 14px;">
+                    <div class="label">Unlocked Milestones</div>
+                    <div class="value" id="goalMilestonesCount" style="font-size: 1.5rem; color: #fde047;">0</div>
+                    <div class="subtext">Evidence-based achievement badges</div>
+                </div>
+                <div class="stat-card" style="padding: 14px;">
+                    <div class="label">Completion Rate</div>
+                    <div class="value" id="goalCompletionRate" style="font-size: 1.5rem; color: #c084fc;">0%</div>
+                    <div class="subtext">Overall goal achievement</div>
+                </div>
+            </div>
+
+            <!-- Create New Goal Form -->
+            <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 20px;">
+                <h3 style="font-size: 0.95rem; color: var(--text); margin-bottom: 10px;">Create a New Learning Goal</h3>
+                <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;">
+                    <div>
+                        <label style="display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">Goal Title:</label>
+                        <input type="text" id="goalTitle" placeholder="e.g. Master Binary Search" style="background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px 10px; font-size: 0.85rem; width: 200px;">
+                    </div>
+                    <div>
+                        <label style="display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">Goal Type:</label>
+                        <select id="goalType" style="background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px 10px; font-size: 0.85rem;">
+                            <option value="solve_problems">Solve Problems Count</option>
+                            <option value="solve_difficulty">Solve by Difficulty</option>
+                            <option value="practice_topic">Practice Algorithmic Topic</option>
+                            <option value="complete_sessions">Complete Sessions</option>
+                            <option value="complete_revisions">Complete Revisions</option>
+                            <option value="weekly_target">Weekly Target</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">Target Value:</label>
+                        <input type="number" id="goalTarget" value="5" min="1" max="1000" style="background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px 10px; font-size: 0.85rem; width: 80px;">
+                    </div>
+                    <div>
+                        <label style="display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">Parameter (Diff/Topic):</label>
+                        <input type="text" id="goalParam" placeholder="e.g. medium or dynamic-programming" style="background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px 10px; font-size: 0.85rem; width: 170px;">
+                    </div>
+                    <div>
+                        <label style="display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">Deadline (Days):</label>
+                        <input type="number" id="goalDays" value="14" min="1" max="365" style="background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px 10px; font-size: 0.85rem; width: 75px;">
+                    </div>
+                    <button class="btn btn-success btn-sm" onclick="createNewGoal()">Create Goal</button>
+                </div>
+            </div>
+
+            <!-- Active Goals List -->
+            <h3 style="font-size: 1rem; color: var(--text); margin-bottom: 10px;">Active Learning Targets</h3>
+            <div id="goalsListContainer" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px;">
+                <div style="text-align: center; color: var(--text-muted); padding: 12px;">Loading active goals...</div>
+            </div>
+
+            <!-- Milestone Achievements Badges -->
+            <h3 style="font-size: 1rem; color: var(--text); margin-bottom: 10px;">Unlocked Milestones & Badges</h3>
+            <div id="milestonesContainer" style="display: flex; flex-wrap: wrap; gap: 10px;">
+                <div style="color: var(--text-muted); font-size: 0.85rem;">Checking verified achievements...</div>
+            </div>
+        </div>
+
         <footer>
             LeetCode Agent • Local Interactive Learning Workspace • No Live Account Modification
         </footer>
@@ -1121,10 +1211,182 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             }
         }
 
-        // Initialize Coach and Revision on window load
+        // Goals & Milestones Functions (Milestone 6.3.13)
+        async function reloadGoalsAndMilestones() {
+            try {
+                // Fetch analytics & goals
+                const [goalsRes, analyticsRes, milestonesRes] = await Promise.all([
+                    fetch("/api/goals"),
+                    fetch("/api/goals/analytics"),
+                    fetch("/api/milestones")
+                ]);
+
+                const goals = await goalsRes.json();
+                const analytics = await analyticsRes.json();
+                const milestones = await milestonesRes.json();
+
+                // Update summary cards
+                document.getElementById("goalActiveCount").innerText = analytics.active_goals || 0;
+                document.getElementById("goalCompletedCount").innerText = analytics.completed_goals || 0;
+                document.getElementById("goalMilestonesCount").innerText = (analytics.milestones_unlocked || 0) + "/" + (analytics.total_milestones || 5);
+                document.getElementById("goalCompletionRate").innerText = (analytics.completion_rate_pct || 0) + "%";
+
+                // Render Goals list
+                const goalsContainer = document.getElementById("goalsListContainer");
+                goalsContainer.innerHTML = "";
+
+                if (!goals || goals.length === 0) {
+                    goalsContainer.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 12px; background: rgba(30, 41, 59, 0.4); border-radius: 8px;">No active goals yet. Create one above to jumpstart your learning pacing!</div>';
+                } else {
+                    goals.forEach(g => {
+                        const pct = Math.min(100, Math.round(g.percent_completed || 0));
+                        const isDone = g.status === 'completed';
+                        const isPaused = g.status === 'paused';
+                        const badgeColor = isDone ? 'var(--success)' : (isPaused ? 'var(--warning)' : 'var(--primary)');
+                        const progressColor = isDone ? '#22c55e' : (pct >= 75 ? '#38bdf8' : (pct >= 40 ? '#fde047' : '#94a3b8'));
+
+                        const card = document.createElement("div");
+                        card.style.cssText = "background: rgba(30, 41, 59, 0.7); border: 1px solid var(--border); border-radius: 8px; padding: 14px;";
+                        card.innerHTML = `
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                                <div>
+                                    <span style="font-weight: 600; font-size: 0.95rem; color: var(--text);">${escapeHtml(g.title)}</span>
+                                    <span style="font-size: 0.75rem; background: rgba(56, 189, 248, 0.15); color: ${badgeColor}; border: 1px solid ${badgeColor}; padding: 2px 8px; border-radius: 9999px; margin-left: 8px; text-transform: uppercase;">${g.status}</span>
+                                    <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 6px;">Type: ${escapeHtml(g.goal_type)}</span>
+                                </div>
+                                <div style="display: flex; gap: 6px;">
+                                    ${!isDone ? `
+                                        <button class="btn btn-secondary btn-sm" onclick="toggleGoalStatus('${g.goal_id}', '${isPaused ? 'active' : 'paused'}')">${isPaused ? 'Resume' : 'Pause'}</button>
+                                        <button class="btn btn-success btn-sm" onclick="completeGoalAction('${g.goal_id}')">Mark Complete</button>
+                                    ` : ''}
+                                    <button class="btn btn-danger btn-sm" onclick="toggleGoalStatus('${g.goal_id}', 'archived')">Archive</button>
+                                </div>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">
+                                <span>Progress: ${g.current_value} / ${g.target_value} (${pct}%)</span>
+                                <span>${g.days_remaining !== null ? (g.days_remaining + ' days remaining') : 'No deadline'}</span>
+                            </div>
+                            <div style="background: rgba(15, 23, 42, 0.6); height: 8px; border-radius: 4px; overflow: hidden; margin-bottom: 8px;">
+                                <div style="background: ${progressColor}; height: 100%; width: ${pct}%; transition: width 0.3s ease;"></div>
+                            </div>
+                            ${g.description ? `<div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(g.description)}</div>` : ''}
+                        `;
+                        goalsContainer.appendChild(card);
+                    });
+                }
+
+                // Render Milestones
+                const milestonesContainer = document.getElementById("milestonesContainer");
+                milestonesContainer.innerHTML = "";
+                milestones.forEach(m => {
+                    const badge = document.createElement("div");
+                    const unlocked = m.is_unlocked;
+                    badge.style.cssText = `padding: 10px 14px; border-radius: 8px; border: 1px solid ${unlocked ? 'rgba(34, 197, 94, 0.4)' : 'rgba(51, 65, 85, 0.6)'}; background: ${unlocked ? 'rgba(34, 197, 94, 0.1)' : 'rgba(15, 23, 42, 0.4)'}; display: flex; align-items: center; gap: 8px; opacity: ${unlocked ? '1' : '0.5'}; min-width: 220px; flex: 1 1 calc(33% - 10px);`;
+                    badge.innerHTML = `
+                        <div style="font-size: 1.4rem;">${unlocked ? '🏆' : '🔒'}</div>
+                        <div>
+                            <div style="font-weight: 600; font-size: 0.85rem; color: ${unlocked ? '#4ade80' : 'var(--text-muted)'};">${escapeHtml(m.title)}</div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(m.description)}</div>
+                            ${unlocked ? `<div style="font-size: 0.7rem; color: #86efac; margin-top: 2px;">Unlocked: ${m.unlocked_at ? m.unlocked_at.slice(0, 10) : 'Active'}</div>` : ''}
+                        </div>
+                    `;
+                    milestonesContainer.appendChild(badge);
+                });
+
+            } catch (err) {
+                console.error("Error loading goals and milestones:", err);
+            }
+        }
+
+        async function createNewGoal() {
+            const title = document.getElementById("goalTitle").value.trim();
+            const goal_type = document.getElementById("goalType").value;
+            const target_value = parseInt(document.getElementById("goalTarget").value, 10);
+            const param = document.getElementById("goalParam").value.trim();
+            const days = parseInt(document.getElementById("goalDays").value, 10);
+
+            if (!title) {
+                showAlert("Please enter a goal title", false);
+                return;
+            }
+
+            let target_difficulty = null;
+            let target_topic = null;
+            if (goal_type === "solve_difficulty") {
+                target_difficulty = param.toLowerCase() || "easy";
+            } else if (goal_type === "practice_topic") {
+                target_topic = param.toLowerCase() || "arrays";
+            }
+
+            try {
+                const res = await fetch("/api/goals/create", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        title: title,
+                        goal_type: goal_type,
+                        target_value: target_value,
+                        target_difficulty: target_difficulty,
+                        target_topic: target_topic,
+                        days_to_complete: days || 14
+                    })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showAlert(`Goal '${title}' created successfully!`);
+                    document.getElementById("goalTitle").value = "";
+                    document.getElementById("goalParam").value = "";
+                    reloadGoalsAndMilestones();
+                } else {
+                    showAlert(data.error || "Failed to create goal", false);
+                }
+            } catch (err) {
+                showAlert("Error creating goal", false);
+            }
+        }
+
+        async function toggleGoalStatus(goalId, newStatus) {
+            try {
+                const res = await fetch(`/api/goals/${goalId}/status`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ status: newStatus })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showAlert(`Goal status updated to ${newStatus}`);
+                    reloadGoalsAndMilestones();
+                } else {
+                    showAlert(data.error || "Failed to update status", false);
+                }
+            } catch (err) {
+                showAlert("Error updating goal status", false);
+            }
+        }
+
+        async function completeGoalAction(goalId) {
+            try {
+                const res = await fetch(`/api/goals/${goalId}/complete`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" }
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showAlert("Goal marked as completed!");
+                    reloadGoalsAndMilestones();
+                } else {
+                    showAlert(data.error || "Failed to complete goal", false);
+                }
+            } catch (err) {
+                showAlert("Error completing goal", false);
+            }
+        }
+
+        // Initialize Coach, Revision, and Goals on window load
         window.addEventListener("DOMContentLoaded", () => {
             initCoach();
             reloadRevisionQueue();
+            reloadGoalsAndMilestones();
         });
 
         // Close modal on outside click
@@ -1572,6 +1834,187 @@ def create_app(
             })
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
+
+    # =========================================================================
+    # Goals & Milestones Management Endpoints (Milestone 6.3.13)
+    # =========================================================================
+
+    @app.route("/api/goals")
+    def api_list_goals():
+        """Retrieve all active/tracked learning goals."""
+        status_filter = request.args.get("status")
+        mgr = GoalsManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        filter_status = None
+        if status_filter:
+            try:
+                filter_status = GoalStatus(status_filter)
+            except ValueError:
+                pass
+        goals = mgr.list_goals(status_filter=filter_status)
+        from dataclasses import asdict
+        return jsonify([asdict(g) for g in goals])
+
+    @app.route("/api/goals/create", methods=["POST"])
+    def api_create_goal():
+        """Create a new learning goal with validated target metrics."""
+        req_data = request.get_json(silent=True) or {}
+        title = req_data.get("title", "").strip()
+        goal_type_str = req_data.get("goal_type", "")
+        target_value = req_data.get("target_value", 1)
+        target_difficulty = req_data.get("target_difficulty")
+        target_topic = req_data.get("target_topic")
+        description = req_data.get("description", "")
+        days_to_complete = req_data.get("days_to_complete")
+
+        try:
+            goal_type = GoalType(goal_type_str)
+        except ValueError:
+            return jsonify({"error": f"Invalid goal_type. Must be one of {[t.value for t in GoalType]}"}), 400
+
+        mgr = GoalsManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            goal = mgr.create_goal(
+                title=title,
+                goal_type=goal_type,
+                target_value=int(target_value),
+                target_difficulty=target_difficulty,
+                target_topic=target_topic,
+                description=description,
+                days_to_complete=int(days_to_complete) if days_to_complete else None,
+            )
+            from dataclasses import asdict
+            return jsonify({
+                "message": f"Goal '{goal.title}' created successfully",
+                "goal": asdict(goal),
+            }), 201
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/goals/<goal_id>")
+    def api_get_goal(goal_id: str):
+        """Retrieve a specific learning goal by ID."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", goal_id):
+            return jsonify({"error": "Invalid goal_id format"}), 400
+
+        mgr = GoalsManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        goal = mgr.get_goal(goal_id)
+        if not goal:
+            return jsonify({"error": f"Goal '{goal_id}' not found"}), 404
+
+        from dataclasses import asdict
+        return jsonify(asdict(goal))
+
+    @app.route("/api/goals/<goal_id>/update", methods=["POST"])
+    def api_update_goal(goal_id: str):
+        """Update goal parameters (title, description, target_value, deadline_at)."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", goal_id):
+            return jsonify({"error": "Invalid goal_id format"}), 400
+
+        req_data = request.get_json(silent=True) or {}
+        mgr = GoalsManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            updated = mgr.update_goal(
+                goal_id=goal_id,
+                title=req_data.get("title"),
+                description=req_data.get("description"),
+                target_value=req_data.get("target_value"),
+                deadline_at=req_data.get("deadline_at"),
+            )
+            from dataclasses import asdict
+            return jsonify({
+                "message": f"Goal '{goal_id}' updated successfully",
+                "goal": asdict(updated),
+            })
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/goals/<goal_id>/status", methods=["POST"])
+    def api_set_goal_status(goal_id: str):
+        """Set goal status to active, paused, or archived."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", goal_id):
+            return jsonify({"error": "Invalid goal_id format"}), 400
+
+        req_data = request.get_json(silent=True) or {}
+        status_str = req_data.get("status", "")
+        try:
+            status = GoalStatus(status_str)
+        except ValueError:
+            return jsonify({"error": f"Invalid status. Must be one of {[s.value for s in GoalStatus]}"}), 400
+
+        mgr = GoalsManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            updated = mgr.set_goal_status(goal_id, status)
+            from dataclasses import asdict
+            return jsonify({
+                "message": f"Goal '{goal_id}' status set to {status.value}",
+                "goal": asdict(updated),
+            })
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/goals/<goal_id>/complete", methods=["POST"])
+    def api_complete_goal(goal_id: str):
+        """Explicitly complete a goal."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", goal_id):
+            return jsonify({"error": "Invalid goal_id format"}), 400
+
+        mgr = GoalsManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            updated = mgr.complete_goal(goal_id)
+            from dataclasses import asdict
+            return jsonify({
+                "message": f"Goal '{goal_id}' marked as completed",
+                "goal": asdict(updated),
+            })
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/milestones")
+    def api_list_milestones():
+        """Retrieve all milestone badges and their unlock status."""
+        mgr = GoalsManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        milestones = mgr.check_and_unlock_milestones()
+        from dataclasses import asdict
+        return jsonify([asdict(m) for m in milestones])
+
+    @app.route("/api/goals/analytics")
+    def api_goals_analytics():
+        """Retrieve aggregated goals analytics report."""
+        mgr = GoalsManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        analytics = mgr.get_goals_analytics()
+        from dataclasses import asdict
+        d = asdict(analytics)
+        d["total_goals"] = analytics.total_goals
+        d["active_goals"] = analytics.active_goals_count
+        d["completed_goals"] = analytics.completed_goals_count
+        d["completion_rate_pct"] = analytics.completion_rate_pct
+        d["milestones_unlocked"] = analytics.milestones_unlocked
+        d["total_milestones"] = analytics.total_milestones
+        return jsonify(d)
 
     return app
 

@@ -36,6 +36,14 @@ from intelligence.revision import (
     RevisionStatus,
     SpacedRevisionEngine,
 )
+from intelligence.roadmap import (
+    DsaRoadmapEngine,
+    ROADMAP_STAGES_CONFIG,
+    RoadmapOverviewReport,
+    RoadmapStageSummary,
+    TopicMasteryRecord,
+    TopicMasteryStatus,
+)
 from intelligence.tracker import (
     DEFAULT_TRACKING_DB_PATH,
     ProblemProgressStatus,
@@ -721,6 +729,53 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             </div>
         </div>
 
+        <!-- Personalized DSA Skill Roadmap & Mastery Map (Milestone 6.3.14) -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Personalized DSA Skill Roadmap & Mastery Map</h2>
+                <button class="btn btn-secondary btn-sm" onclick="reloadRoadmapData()">Refresh Roadmap</button>
+            </div>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px;">
+                Evidence-based progression across 5 structured DSA stages. Mastery scores and dependency readiness are calculated transparently from verified problem attempts, revisions, and learning goals.
+            </p>
+
+            <div class="grid-stats" style="margin-bottom: 16px;">
+                <div class="stat-card" style="padding: 14px;">
+                    <div class="label">Roadmap Progress</div>
+                    <div class="value" id="roadmapProgressPct" style="font-size: 1.5rem; color: #38bdf8;">0%</div>
+                    <div class="subtext" id="roadmapProficientCount">0 of 22 topics proficient</div>
+                </div>
+                <div class="stat-card" style="padding: 14px;">
+                    <div class="label">In Practice</div>
+                    <div class="value" id="roadmapLearningCount" style="font-size: 1.5rem; color: #fde047;">0</div>
+                    <div class="subtext">Active learning / practicing</div>
+                </div>
+                <div class="stat-card" style="padding: 14px;">
+                    <div class="label">Ready to Learn</div>
+                    <div class="value" id="roadmapReadyCount" style="font-size: 1.5rem; color: #86efac;">0</div>
+                    <div class="subtext">Prerequisites satisfied</div>
+                </div>
+                <div class="stat-card" style="padding: 14px;">
+                    <div class="label">Locked Topics</div>
+                    <div class="value" id="roadmapLockedCount" style="font-size: 1.5rem; color: #94a3b8;">0</div>
+                    <div class="subtext">Prerequisites incomplete</div>
+                </div>
+            </div>
+
+            <!-- Personalized Recommendations Banner -->
+            <div id="roadmapRecsContainer" style="background: rgba(30, 41, 59, 0.7); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 20px;">
+                <h3 style="font-size: 0.95rem; color: var(--primary); margin-bottom: 8px;">Recommended Next Learning Actions</h3>
+                <div id="roadmapRecsList" style="display: flex; flex-direction: column; gap: 8px;">
+                    <div style="color: var(--text-muted); font-size: 0.85rem;">Analyzing skill readiness...</div>
+                </div>
+            </div>
+
+            <!-- 5 Stages Roadmap View -->
+            <div id="roadmapStagesContainer" style="display: flex; flex-direction: column; gap: 16px;">
+                <div style="text-align: center; color: var(--text-muted); padding: 16px;">Loading DSA skill stages...</div>
+            </div>
+        </div>
+
         <footer>
             LeetCode Agent • Local Interactive Learning Workspace • No Live Account Modification
         </footer>
@@ -1382,11 +1437,120 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             }
         }
 
-        // Initialize Coach, Revision, and Goals on window load
+        // Roadmap Functions (Milestone 6.3.14)
+        async function reloadRoadmapData() {
+            try {
+                const [overviewRes, recsRes] = await Promise.all([
+                    fetch("/api/roadmap/analytics"),
+                    fetch("/api/roadmap/recommendations")
+                ]);
+
+                const overview = await overviewRes.json();
+                const recs = await recsRes.json();
+
+                // Stats
+                document.getElementById("roadmapProgressPct").innerText = (overview.overall_roadmap_progress_pct || 0) + "%";
+                document.getElementById("roadmapProficientCount").innerText = `${overview.proficient_topics_count || 0} of ${overview.total_topics || 22} topics proficient`;
+                document.getElementById("roadmapLearningCount").innerText = overview.learning_topics_count || 0;
+                document.getElementById("roadmapReadyCount").innerText = (overview.ready_to_learn_topics || []).length;
+                document.getElementById("roadmapLockedCount").innerText = overview.locked_topics_count || 0;
+
+                // Recommendations list
+                const recsList = document.getElementById("roadmapRecsList");
+                recsList.innerHTML = "";
+                if (!recs || recs.length === 0) {
+                    recsList.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem;">No immediate actions needed. Excellent progress!</div>';
+                } else {
+                    recs.forEach(r => {
+                        const item = document.createElement("div");
+                        item.style.cssText = "display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.6); padding: 8px 12px; border-radius: 6px; font-size: 0.85rem;";
+                        item.innerHTML = `
+                            <div>
+                                <span style="font-weight: 600; color: #38bdf8;">${escapeHtml(r.title)}</span>
+                                <span style="color: var(--text-muted); margin-left: 8px;">${escapeHtml(r.rationale)}</span>
+                            </div>
+                            <span style="font-size: 0.75rem; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid #0284c7; padding: 2px 6px; border-radius: 4px;">P${r.priority}</span>
+                        `;
+                        recsList.appendChild(item);
+                    });
+                }
+
+                // Stages rendering
+                const stagesContainer = document.getElementById("roadmapStagesContainer");
+                stagesContainer.innerHTML = "";
+                const stages = overview.stages || [];
+                stages.forEach(stg => {
+                    const stageCard = document.createElement("div");
+                    stageCard.style.cssText = "background: rgba(30, 41, 59, 0.7); border: 1px solid var(--border); border-radius: 8px; padding: 14px;";
+
+                    const topicsHtml = (stg.topics || []).map(t => {
+                        const score = t.mastery_score || 0;
+                        let badgeColor = "var(--text-muted)";
+                        let statusBg = "rgba(51, 65, 85, 0.4)";
+                        if (t.status === "proficient") {
+                            badgeColor = "#4ade80";
+                            statusBg = "rgba(34, 197, 94, 0.15)";
+                        } else if (t.status === "practicing") {
+                            badgeColor = "#38bdf8";
+                            statusBg = "rgba(56, 189, 248, 0.15)";
+                        } else if (t.status === "learning") {
+                            badgeColor = "#fde047";
+                            statusBg = "rgba(234, 179, 8, 0.15)";
+                        } else if (t.status === "not_started") {
+                            badgeColor = "#93c5fd";
+                            statusBg = "rgba(59, 130, 246, 0.1)";
+                        }
+
+                        return `
+                            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; justify-content: space-between;">
+                                <div>
+                                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
+                                        <span style="font-weight: 600; font-size: 0.9rem; color: var(--text);">${escapeHtml(t.display_name)}</span>
+                                        <span style="font-size: 0.7rem; color: ${badgeColor}; background: ${statusBg}; border: 1px solid ${badgeColor}; padding: 1px 6px; border-radius: 9999px; text-transform: uppercase;">${t.status}</span>
+                                    </div>
+                                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px;">
+                                        Solved: ${t.distinct_solved} | Attempts: ${t.total_attempts} | Score: ${score}/100
+                                    </div>
+                                    <div style="background: rgba(30, 41, 59, 0.8); height: 6px; border-radius: 3px; overflow: hidden; margin-bottom: 6px;">
+                                        <div style="background: ${badgeColor}; height: 100%; width: ${score}%;"></div>
+                                    </div>
+                                    <div style="font-size: 0.75rem; color: var(--text-muted); line-height: 1.3;">
+                                        ${escapeHtml(t.recommended_action)}
+                                    </div>
+                                </div>
+                                ${t.missing_prerequisites && t.missing_prerequisites.length > 0 ? `
+                                    <div style="font-size: 0.7rem; color: #fca5a5; margin-top: 6px;">Needs: ${escapeHtml(t.missing_prerequisites.join(", "))}</div>
+                                ` : ''}
+                            </div>
+                        `;
+                    }).join("");
+
+                    stageCard.innerHTML = `
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <div>
+                                <span style="font-weight: 600; font-size: 1rem; color: var(--primary);">Stage ${stg.stage_id}: ${escapeHtml(stg.stage_name)}</span>
+                                <span style="font-size: 0.8rem; color: var(--text-muted); margin-left: 8px;">Avg Mastery: ${stg.average_mastery_score}/100</span>
+                            </div>
+                            <span style="font-size: 0.85rem; color: #86efac; font-weight: 600;">${stg.completed_topics} / ${stg.total_topics} Proficient (${stg.stage_progress_pct}%)</span>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px;">
+                            ${topicsHtml}
+                        </div>
+                    `;
+                    stagesContainer.appendChild(stageCard);
+                });
+
+            } catch (err) {
+                console.error("Error loading roadmap data:", err);
+            }
+        }
+
+        // Initialize Coach, Revision, Goals, and Roadmap on window load
         window.addEventListener("DOMContentLoaded", () => {
             initCoach();
             reloadRevisionQueue();
             reloadGoalsAndMilestones();
+            reloadRoadmapData();
         });
 
         // Close modal on outside click
@@ -2015,6 +2179,86 @@ def create_app(
         d["milestones_unlocked"] = analytics.milestones_unlocked
         d["total_milestones"] = analytics.total_milestones
         return jsonify(d)
+
+    # =========================================================================
+    # DSA Skill Roadmap & Mastery Map Endpoints (Milestone 6.3.14)
+    # =========================================================================
+
+    @app.route("/api/roadmap")
+    @app.route("/api/roadmap/analytics")
+    def api_roadmap_overview():
+        """Retrieve complete DSA skill roadmap overview and stage analytics."""
+        engine = DsaRoadmapEngine(
+            progress_db_path=db_path,
+            tracking_db_path=tracker_path,
+            language="python",
+        )
+        overview = engine.get_roadmap_overview()
+        from dataclasses import asdict
+        return jsonify(asdict(overview))
+
+    @app.route("/api/roadmap/stages")
+    def api_roadmap_stages():
+        """Retrieve stage summaries and topic lists."""
+        engine = DsaRoadmapEngine(
+            progress_db_path=db_path,
+            tracking_db_path=tracker_path,
+            language="python",
+        )
+        stages = engine.get_stage_summaries()
+        from dataclasses import asdict
+        return jsonify([asdict(s) for s in stages])
+
+    @app.route("/api/roadmap/topics")
+    def api_roadmap_topics():
+        """Retrieve all roadmap topics with computed mastery."""
+        engine = DsaRoadmapEngine(
+            progress_db_path=db_path,
+            tracking_db_path=tracker_path,
+            language="python",
+        )
+        summaries = engine.get_stage_summaries()
+        from dataclasses import asdict
+        all_topics = []
+        for s in summaries:
+            for t in s.topics:
+                all_topics.append(asdict(t))
+        return jsonify(all_topics)
+
+    @app.route("/api/roadmap/topics/<topic_id>")
+    def api_roadmap_topic_detail(topic_id: str):
+        """Retrieve mastery detail for a specific roadmap topic."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", topic_id):
+            return jsonify({"error": "Invalid topic identifier format"}), 400
+
+        engine = DsaRoadmapEngine(
+            progress_db_path=db_path,
+            tracking_db_path=tracker_path,
+            language="python",
+        )
+        detail = engine.get_topic_detail(topic_id)
+        if not detail:
+            return jsonify({"error": f"Topic '{topic_id}' not found in roadmap"}), 404
+
+        from dataclasses import asdict
+        return jsonify(asdict(detail))
+
+    @app.route("/api/roadmap/recommendations")
+    def api_roadmap_recommendations():
+        """Retrieve personalized next topic and practice recommendations."""
+        try:
+            limit = int(request.args.get("limit", 5))
+        except ValueError:
+            limit = 5
+
+        engine = DsaRoadmapEngine(
+            progress_db_path=db_path,
+            tracking_db_path=tracker_path,
+            language="python",
+        )
+        recs = engine.generate_recommendations(limit=limit)
+        from dataclasses import asdict
+        return jsonify([asdict(r) for r in recs])
 
     return app
 

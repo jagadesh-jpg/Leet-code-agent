@@ -44,6 +44,18 @@ from intelligence.revision import (
     RevisionStatus,
     SpacedRevisionEngine,
 )
+from intelligence.roadmap import (
+    DsaRoadmapEngine,
+    ROADMAP_STAGES_CONFIG,
+    ROADMAP_TOPIC_NODES,
+    RoadmapOverviewReport,
+    RoadmapRecommendation,
+    RoadmapRecommendationType,
+    RoadmapStageSummary,
+    TopicMasteryRecord,
+    TopicMasteryStatus,
+    TopicRoadmapNode,
+)
 from intelligence.selector import ProblemScoreBreakdown, ProblemSelector
 from intelligence.topics import (
     CURATED_PROBLEM_TOPICS,
@@ -109,4 +121,14 @@ __all__ = [
     "MilestoneAchievement",
     "GoalPlanRecommendation",
     "GoalsAnalyticsReport",
+    "DsaRoadmapEngine",
+    "TopicMasteryStatus",
+    "RoadmapRecommendationType",
+    "TopicRoadmapNode",
+    "TopicMasteryRecord",
+    "RoadmapStageSummary",
+    "RoadmapRecommendation",
+    "RoadmapOverviewReport",
+    "ROADMAP_STAGES_CONFIG",
+    "ROADMAP_TOPIC_NODES",
 ]

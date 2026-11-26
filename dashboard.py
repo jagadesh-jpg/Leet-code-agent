@@ -294,6 +294,9 @@ def get_dashboard_data(
     # Attempt statistics
     attempts_summary = store.get_all_attempts_summary(db_path=db_path)
 
+    # 6. Unified Learning Intelligence & Command Center Integration (Milestone 6.3.8)
+    learning_intelligence = _get_learning_intelligence_data(db_path=db_path, language="python")
+
     return {
         "username": username,
         "profile_url": f"https://leetcode.com/u/{username}/",
@@ -313,4 +316,126 @@ def get_dashboard_data(
         "attempted_not_accepted": attempted_not_accepted,
         "recommendations": recommendations[:6],
         "recent_submissions": unified_submissions[:10],
+        "learning_intelligence": learning_intelligence,
+    }
+
+
+def _get_learning_intelligence_data(
+    db_path: Optional[str | Path] = None,
+    tracking_db_path: Optional[str | Path] = None,
+    language: str = "python",
+) -> Dict[str, Any]:
+    """Extract topic mastery, session history, and adaptive recommendations without side effects."""
+    from intelligence.adaptive import AdaptiveLearningEngine
+    from intelligence.planner import SessionPlanner
+    from intelligence.topics import TopicAnalyzer
+    from intelligence.tracker import SessionTracker
+
+    built_in = load_problems()
+
+    # Topic Mastery
+    topic_analyzer = TopicAnalyzer(db_path=db_path, language=language)
+    topic_metrics = topic_analyzer.analyze_topics(built_in, include_curated=True)
+    topics_list = []
+    for t_name, m in sorted(topic_metrics.items(), key=lambda x: (-x[1].unsolved_problems, x[0])):
+        topics_list.append({
+            "topic": m.topic,
+            "total_problems": m.total_problems,
+            "solved_problems": m.solved_problems,
+            "unsolved_problems": m.unsolved_problems,
+            "total_attempts": m.total_attempts,
+            "failed_attempts": m.failed_attempts,
+            "success_rate": round(m.success_rate, 2),
+            "mastery_status": m.mastery_status,
+            "summary": m.summary,
+        })
+
+    # Tracked Sessions & Analytics
+    tracker = SessionTracker(db_path=tracking_db_path)
+    analytics = tracker.get_analytics()
+    recent_sess = tracker.list_sessions(limit=5)
+    sessions_list = []
+    for s in recent_sess:
+        sessions_list.append({
+            "session_id": s.session_id,
+            "status": s.status.value,
+            "target_language": s.target_language,
+            "total_problems": s.total_problems,
+            "completed_count": s.completed_count,
+            "skipped_count": s.skipped_count,
+            "created_at": s.created_at,
+            "summary": s.session_summary,
+        })
+
+    # Adaptive Recommendation
+    adaptive_engine = AdaptiveLearningEngine(
+        progress_db_path=db_path,
+        tracking_db_path=tracking_db_path,
+        language=language,
+    )
+    report = adaptive_engine.analyze_and_recommend(candidate_problems=built_in)
+
+    # Preview Planned Session (using recommended sizing)
+    rec_size = report.session_sizing.recommended_size if report.session_sizing else 3
+    planner = SessionPlanner(db_path=db_path, language=language)
+    planned_session = planner.plan_session(built_in, session_size=rec_size, skip_solved=True)
+    planned_problems_list = []
+    for p in planned_session.planned_problems:
+        planned_problems_list.append({
+            "rank": p.rank,
+            "role": p.role.value,
+            "problem_id": p.problem_id,
+            "title": p.title,
+            "difficulty": p.difficulty,
+            "priority_score": p.priority_score,
+            "topics": p.topics,
+            "reason": p.reason,
+        })
+
+    return {
+        "overall_status": report.overall_status,
+        "topics_needing_practice": report.topics_needing_practice,
+        "proficient_topics": report.proficient_topics,
+        "topics_mastery": topics_list,
+        "session_analytics": {
+            "total_sessions_planned": analytics.total_sessions_planned,
+            "total_sessions_completed": analytics.total_sessions_completed,
+            "total_sessions_in_progress": analytics.total_sessions_in_progress,
+            "total_sessions_cancelled": analytics.total_sessions_cancelled,
+            "session_completion_rate": round(analytics.session_completion_rate, 2),
+            "total_problems_planned": analytics.total_problems_planned,
+            "total_problems_completed": analytics.total_problems_completed,
+            "total_problems_skipped": analytics.total_problems_skipped,
+            "problem_completion_rate": round(analytics.problem_completion_rate, 2),
+        },
+        "recent_sessions": sessions_list,
+        "primary_recommendation": {
+            "action_type": report.primary_recommendation.action_type.value,
+            "title": report.primary_recommendation.title,
+            "target": report.primary_recommendation.target_identifier,
+            "confidence": report.primary_recommendation.confidence,
+            "rationale": report.primary_recommendation.rationale,
+            "evidence": report.primary_recommendation.evidence,
+        },
+        "secondary_recommendations": [
+            {
+                "action_type": r.action_type.value,
+                "title": r.title,
+                "target": r.target_identifier,
+                "rationale": r.rationale,
+            }
+            for r in report.secondary_recommendations
+        ],
+        "suggested_session_sizing": {
+            "recommended_size": report.session_sizing.recommended_size if report.session_sizing else 3,
+            "default_size": report.session_sizing.default_size if report.session_sizing else 3,
+            "rationale": report.session_sizing.rationale if report.session_sizing else "Standard baseline.",
+            "has_sufficient_evidence": report.session_sizing.has_sufficient_evidence if report.session_sizing else False,
+        },
+        "preview_session": {
+            "target_size": planned_session.target_size,
+            "total_planned": planned_session.total_problems,
+            "summary": planned_session.session_summary,
+            "problems": planned_problems_list,
+        },
     }

@@ -287,6 +287,17 @@ def main():
         help="Display adaptive learning intelligence synthesis and next action recommendation",
     )
     parser.add_argument(
+        "--dashboard-web",
+        action="store_true",
+        help="Launch local Unified Command Center web dashboard server (Flask)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=5050,
+        help="Port for local web dashboard server (default: 5050)",
+    )
+    parser.add_argument(
         "--tracking-db-path",
         type=str,
         default=None,
@@ -569,6 +580,15 @@ def main():
             print(f"    Rationale:      {sz.rationale}")
             print(f"    Confidence:     {'Sufficient data' if sz.has_sufficient_evidence else 'Preliminary (insufficient tracked sessions)'}")
         print("=" * 80 + "\n")
+        sys.exit(0)
+
+    if args.dashboard_web:
+        from dashboard_server import run_dashboard_server
+        run_dashboard_server(
+            port=args.port,
+            db_path=args.db_path,
+            tracking_db_path=args.tracking_db_path,
+        )
         sys.exit(0)
 
     if args.select:

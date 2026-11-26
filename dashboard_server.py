@@ -40,6 +40,13 @@ from intelligence.goals import (
     MilestoneAchievement,
 )
 from intelligence.insights import LearningInsightsEngine
+from intelligence.mock_interview import (
+    AssessmentReport,
+    InterviewManager,
+    InterviewStatus,
+    InterviewTrack,
+    MockInterviewSession,
+)
 from intelligence.planner import SessionPlanner
 from intelligence.portfolio import (
     DEFAULT_PORTFOLIO_EXPORTS_DIR,
@@ -1120,6 +1127,204 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 <div id="portExportHistoryList" style="font-size: 0.85rem; color: var(--text-muted);">
                     No exports generated yet.
                 </div>
+            </div>
+        </div>
+
+        <!-- Mock Interview & Assessment Mode (Milestone 6.3.19) -->
+        <div class="card" id="interviewSection">
+            <div class="card-header">
+                <div>
+                    <h2>Mock Interview & Technical Assessment Mode</h2>
+                    <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 4px;">
+                        Timed offline coding interview simulations with measurable 5-tier rubric scoring and deterministic feedback.
+                    </p>
+                </div>
+                <div id="interviewStatusHeader">
+                    <span id="interviewActiveBadge" class="status-badge" style="background: rgba(148, 163, 184, 0.2); color: #94a3b8;">No Active Interview</span>
+                </div>
+            </div>
+
+            <!-- Start Configuration View (visible when no active interview) -->
+            <div id="interviewConfigView" style="background: rgba(15, 23, 42, 0.4); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                <h3 style="font-size: 0.95rem; color: var(--text); margin-bottom: 12px;">Configure New Assessment Session</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px;">
+                    <div>
+                        <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Difficulty Track</label>
+                        <select id="mockTrack" style="width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; font-size: 0.85rem;">
+                            <option value="beginner">Beginner (Easy Fundamentals)</option>
+                            <option value="intermediate" selected>Intermediate (Core Algorithms)</option>
+                            <option value="advanced">Advanced (Hard & Optimization)</option>
+                            <option value="mixed">Mixed (Progressive Multi-tier)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Time Limit</label>
+                        <select id="mockDuration" style="width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; font-size: 0.85rem;">
+                            <option value="30">30 Minutes (Quick Screen)</option>
+                            <option value="45" selected>45 Minutes (Standard Technical)</option>
+                            <option value="60">60 Minutes (Deep Dive Assessment)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Programming Language</label>
+                        <select id="mockLanguage" style="width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; font-size: 0.85rem;">
+                            <option value="python" selected>Python 3</option>
+                            <option value="cpp">C++ (std::vector)</option>
+                            <option value="c">C</option>
+                            <option value="java">Java</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Problem Count</label>
+                        <select id="mockProblemCount" style="width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; font-size: 0.85rem;">
+                            <option value="1">1 Problem Focus</option>
+                            <option value="2" selected>2 Problems Sequence</option>
+                            <option value="3">3 Problems Gauntlet</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="display: flex; justify-content: flex-end;">
+                    <button class="btn btn-primary" onclick="startMockInterview()">Start Mock Interview</button>
+                </div>
+            </div>
+
+            <!-- Active Interview Workspace View (hidden by default) -->
+            <div id="interviewActiveView" style="display: none;">
+                <!-- Top Control Bar: Countdown, Problem Navigation & Finish -->
+                <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                    <div>
+                        <span style="font-size: 0.8rem; color: var(--text-muted);">Assessment: </span>
+                        <strong id="activeInterviewTitle" style="color: var(--text);">Technical Assessment</strong>
+                        <span id="activeTrackBadge" class="status-badge" style="background: rgba(56, 189, 248, 0.2); color: var(--primary); margin-left: 6px;">Intermediate</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 16px;">
+                        <div style="text-align: right;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Time Remaining</div>
+                            <div id="interviewTimerDisplay" style="font-size: 1.4rem; font-weight: 700; color: var(--success); font-family: monospace;">45:00</div>
+                        </div>
+                        <button class="btn btn-danger btn-sm" onclick="finishMockInterview()">Finish & Submit</button>
+                    </div>
+                </div>
+
+                <!-- Problem Step Bar -->
+                <div id="interviewProblemSteps" style="display: flex; gap: 8px; margin-bottom: 16px; overflow-x: auto;"></div>
+
+                <!-- Problem Statement & Coding Editor Grid -->
+                <div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 16px; margin-bottom: 16px;" id="interviewWorkGrid">
+                    <!-- Left: Problem Description -->
+                    <div style="background: rgba(15, 23, 42, 0.4); border: 1px solid var(--border); border-radius: 8px; padding: 16px; max-height: 480px; overflow-y: auto;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <h3 id="activeProblemTitle" style="font-size: 1.1rem; color: var(--text); margin: 0;">Problem Title</h3>
+                            <span id="activeProblemDiff" class="badge-medium">Medium</span>
+                        </div>
+                        <div id="activeProblemTopics" style="font-size: 0.8rem; color: var(--primary); margin-bottom: 12px;">Topics: Core DSA</div>
+                        <div id="activeProblemDesc" style="font-size: 0.85rem; color: var(--text); line-height: 1.5; margin-bottom: 16px;">Description text...</div>
+
+                        <h4 style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">Examples</h4>
+                        <div id="activeProblemExamples" style="font-size: 0.8rem; font-family: monospace; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 4px; margin-bottom: 12px;"></div>
+
+                        <h4 style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">Constraints</h4>
+                        <div id="activeProblemConstraints" style="font-size: 0.8rem; color: var(--text-muted);"></div>
+                    </div>
+
+                    <!-- Right: Solution Code Editor & Run Controls -->
+                    <div style="display: flex; flex-direction: column;">
+                        <textarea id="interviewCodeEditor" style="width: 100%; height: 360px; background: #0b0f19; color: #f8fafc; font-family: 'Consolas', monospace; font-size: 0.9rem; border: 1px solid var(--border); border-radius: 8px; padding: 12px; resize: vertical;" placeholder="# Write your solution here..."></textarea>
+
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                            <div style="display: flex; gap: 8px;">
+                                <button class="btn btn-secondary btn-sm" onclick="saveInterviewDraft()">Save Draft</button>
+                                <button class="btn btn-success btn-sm" onclick="submitInterviewSolution()">Run & Submit Solution</button>
+                            </div>
+                            <button id="advanceProblemBtn" class="btn btn-secondary btn-sm" onclick="advanceInterviewProblem()">Next Problem &rarr;</button>
+                        </div>
+
+                        <!-- Submission Feedback Box -->
+                        <div id="interviewRunFeedback" style="margin-top: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-size: 0.85rem; display: none;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Assessment Report View (shown when finished or inspecting past interview) -->
+            <div id="interviewReportView" style="display: none; background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div>
+                        <h3 id="reportTitle" style="font-size: 1.1rem; color: var(--text); margin: 0;">Technical Assessment Report</h3>
+                        <p id="reportSub" style="color: var(--text-muted); font-size: 0.8rem; margin-top: 2px;">Completed Assessment Details</p>
+                    </div>
+                    <div style="text-align: right;">
+                        <span id="reportTotalScore" style="font-size: 1.8rem; font-weight: 800; color: var(--primary);">85</span>
+                        <span style="font-size: 0.9rem; color: var(--text-muted);">/100</span>
+                    </div>
+                </div>
+
+                <!-- 5 Rubric Category Cards -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 16px;">
+                    <div style="background: rgba(30, 41, 59, 0.5); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);">
+                        <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Correctness (40%)</div>
+                        <div id="rubricCorrectness" style="font-size: 1.1rem; font-weight: 700; color: var(--text); margin-top: 2px;">0.0/40</div>
+                    </div>
+                    <div style="background: rgba(30, 41, 59, 0.5); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);">
+                        <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Completion (20%)</div>
+                        <div id="rubricCompletion" style="font-size: 1.1rem; font-weight: 700; color: var(--text); margin-top: 2px;">0.0/20</div>
+                    </div>
+                    <div style="background: rgba(30, 41, 59, 0.5); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);">
+                        <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Structure (15%)</div>
+                        <div id="rubricStructure" style="font-size: 1.1rem; font-weight: 700; color: var(--text); margin-top: 2px;">0.0/15</div>
+                    </div>
+                    <div style="background: rgba(30, 41, 59, 0.5); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);">
+                        <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Complexity (15%)</div>
+                        <div id="rubricComplexity" style="font-size: 1.1rem; font-weight: 700; color: var(--text); margin-top: 2px;">0.0/15</div>
+                    </div>
+                    <div style="background: rgba(30, 41, 59, 0.5); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);">
+                        <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Pacing (10%)</div>
+                        <div id="rubricTime" style="font-size: 1.1rem; font-weight: 700; color: var(--text); margin-top: 2px;">0.0/10</div>
+                    </div>
+                </div>
+
+                <!-- Observations & Pedagogical Feedback -->
+                <div id="reportFeedbackDetails" style="font-size: 0.85rem; line-height: 1.5; color: #bae6fd; background: rgba(56, 189, 248, 0.08); border-left: 3px solid var(--primary); padding: 10px; border-radius: 4px; margin-bottom: 12px;"></div>
+
+                <!-- Next Recommendations (DSA Roadmap & Spaced Revision) -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                    <div style="background: rgba(30, 41, 59, 0.4); padding: 10px; border-radius: 6px; border: 1px solid var(--border);">
+                        <strong style="color: var(--text); font-size: 0.85rem;">Recommended Roadmap Topics</strong>
+                        <ul id="reportRecommendedTopics" style="margin: 6px 0 0 16px; padding: 0; font-size: 0.8rem; color: var(--text-muted);"></ul>
+                    </div>
+                    <div style="background: rgba(30, 41, 59, 0.4); padding: 10px; border-radius: 6px; border: 1px solid var(--border);">
+                        <strong style="color: var(--text); font-size: 0.85rem;">Suggested Spaced Revisions</strong>
+                        <ul id="reportRecommendedRevisions" style="margin: 6px 0 0 16px; padding: 0; font-size: 0.8rem; color: var(--text-muted);"></ul>
+                    </div>
+                </div>
+
+                <!-- Disclaimer Banner -->
+                <div style="font-size: 0.75rem; color: var(--text-muted); font-style: italic;">
+                    * This assessment is calculated deterministically from local test runs and static code analysis. It does not measure real-world hiring probability or guarantee interview readiness.
+                </div>
+            </div>
+
+            <!-- Historical Assessment Archive Table -->
+            <div style="margin-top: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <h3 style="font-size: 0.95rem; color: var(--text); margin: 0;">Previous Mock Assessments</h3>
+                    <button class="btn btn-secondary btn-sm" onclick="reloadInterviewHistory()">Refresh History</button>
+                </div>
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--border); text-align: left; color: var(--text-muted);">
+                            <th style="padding: 6px 8px;">Date</th>
+                            <th style="padding: 6px 8px;">Session Title</th>
+                            <th style="padding: 6px 8px;">Track</th>
+                            <th style="padding: 6px 8px;">Duration</th>
+                            <th style="padding: 6px 8px;">Score</th>
+                            <th style="padding: 6px 8px;">Status</th>
+                            <th style="padding: 6px 8px; text-align: right;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="interviewHistoryTableBody">
+                        <tr><td colspan="7" style="padding: 8px; color: var(--text-muted); text-align: center;">No assessments recorded yet.</td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
 
@@ -2634,7 +2839,376 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             }
         }
 
-        // Initialize Coach, Revision, Goals, Roadmap, Daily Mission, Workspace, and Portfolio on window load
+        // Mock Interview Management Functions (Milestone 6.3.19)
+        let activeInterviewId = null;
+        let activeInterviewExpiresAt = null;
+        let interviewTimerInterval = null;
+        let activeInterviewCurrentProblem = null;
+
+        function updateInterviewTimer() {
+            if (!activeInterviewExpiresAt) return;
+            const now = new Date();
+            const expires = new Date(activeInterviewExpiresAt);
+            const diffMs = expires - now;
+
+            const timerEl = document.getElementById("interviewTimerDisplay");
+            if (!timerEl) return;
+
+            if (diffMs <= 0) {
+                timerEl.textContent = "00:00 (Time Expired)";
+                timerEl.style.color = "var(--danger)";
+                return;
+            }
+
+            const totalSec = Math.floor(diffMs / 1000);
+            const mins = Math.floor(totalSec / 60);
+            const secs = totalSec % 60;
+            timerEl.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+            if (mins < 5) {
+                timerEl.style.color = "var(--danger)";
+            } else if (mins < 10) {
+                timerEl.style.color = "var(--warning)";
+            } else {
+                timerEl.style.color = "var(--success)";
+            }
+        }
+
+        async function reloadInterviewState() {
+            try {
+                const res = await fetch("/api/interview");
+                if (!res.ok) return;
+                const data = await res.json();
+
+                const badge = document.getElementById("interviewActiveBadge");
+                const configView = document.getElementById("interviewConfigView");
+                const activeView = document.getElementById("interviewActiveView");
+                const reportView = document.getElementById("interviewReportView");
+
+                if (data.status === "in_progress" && data.interview_id) {
+                    activeInterviewId = data.interview_id;
+                    activeInterviewExpiresAt = data.expires_at;
+
+                    if (badge) {
+                        badge.textContent = `In Progress (${(data.track || '').toUpperCase()})`;
+                        badge.style.background = "rgba(34, 197, 94, 0.2)";
+                        badge.style.color = "var(--success)";
+                    }
+                    if (configView) configView.style.display = "none";
+                    if (reportView) reportView.style.display = "none";
+                    if (activeView) activeView.style.display = "block";
+
+                    document.getElementById("activeInterviewTitle").textContent = data.title;
+                    document.getElementById("activeTrackBadge").textContent = (data.track || '').toUpperCase();
+
+                    // Start timer ticker
+                    if (interviewTimerInterval) clearInterval(interviewTimerInterval);
+                    updateInterviewTimer();
+                    interviewTimerInterval = setInterval(updateInterviewTimer, 1000);
+
+                    // Render problem steps
+                    renderInterviewProblemSteps(data.problems, data.current_problem_index);
+                    loadInterviewProblem(data.current_problem_index);
+                } else {
+                    activeInterviewId = null;
+                    activeInterviewExpiresAt = null;
+                    if (interviewTimerInterval) clearInterval(interviewTimerInterval);
+
+                    if (badge) {
+                        badge.textContent = "No Active Interview";
+                        badge.style.background = "rgba(148, 163, 184, 0.2)";
+                        badge.style.color = "#94a3b8";
+                    }
+                    if (configView) configView.style.display = "block";
+                    if (activeView) activeView.style.display = "none";
+                }
+            } catch (err) {
+                console.error("Failed to load interview state:", err);
+            }
+        }
+
+        function renderInterviewProblemSteps(problems, currentIndex) {
+            const container = document.getElementById("interviewProblemSteps");
+            if (!container || !problems) return;
+
+            container.innerHTML = problems.map((p, idx) => {
+                const isCurrent = (idx === currentIndex);
+                const isPassed = (p.status === "passed");
+                let bg = isCurrent ? "var(--primary)" : (isPassed ? "var(--success)" : "rgba(30, 41, 59, 0.6)");
+                let color = isCurrent ? "#0f172a" : "#f8fafc";
+                return `
+                    <button class="btn btn-sm" onclick="loadInterviewProblem(${idx})" style="background: ${bg}; color: ${color}; font-weight: 600; padding: 4px 12px;">
+                        #${idx + 1}: ${p.title} ${isPassed ? '✓' : ''}
+                    </button>
+                `;
+            }).join("");
+        }
+
+        async function loadInterviewProblem(index) {
+            if (!activeInterviewId) return;
+            try {
+                const res = await fetch(`/api/interview/${activeInterviewId}/problem?index=${index}`);
+                if (!res.ok) return;
+                const ctx = await res.json();
+                activeInterviewCurrentProblem = ctx;
+
+                document.getElementById("activeProblemTitle").textContent = ctx.title;
+                const diffBadge = document.getElementById("activeProblemDiff");
+                diffBadge.textContent = ctx.difficulty.toUpperCase();
+                diffBadge.className = `badge-${ctx.difficulty.toLowerCase()}`;
+
+                document.getElementById("activeProblemTopics").textContent = "Topics: " + (ctx.topics || []).join(", ");
+                document.getElementById("activeProblemDesc").textContent = ctx.description;
+
+                // Examples
+                const exBox = document.getElementById("activeProblemExamples");
+                if (ctx.examples && ctx.examples.length > 0) {
+                    exBox.innerHTML = ctx.examples.map(ex => `Input: ${JSON.stringify(ex.input || ex.args || '')}\nOutput: ${JSON.stringify(ex.output || ex.expected || '')}`).join("\n\n");
+                } else {
+                    exBox.textContent = "See problem description for test examples.";
+                }
+
+                // Constraints
+                const constrBox = document.getElementById("activeProblemConstraints");
+                if (ctx.constraints && ctx.constraints.length > 0) {
+                    constrBox.innerHTML = ctx.constraints.map(c => `• ${c}`).join("<br>");
+                } else {
+                    constrBox.textContent = "Standard time and memory constraints apply.";
+                }
+
+                // Fetch draft or default starter code
+                const draftRes = await fetch(`/api/workspace/draft/${ctx.problem_id}?language=python`);
+                let draftCode = "";
+                if (draftRes.ok) {
+                    const draftData = await draftRes.json();
+                    draftCode = draftData.code || "";
+                }
+                if (!draftCode && ctx.starter_code) {
+                    draftCode = ctx.starter_code.python || Object.values(ctx.starter_code)[0] || "";
+                }
+                document.getElementById("interviewCodeEditor").value = draftCode;
+
+                // Clear previous run feedback
+                const feedbackEl = document.getElementById("interviewRunFeedback");
+                if (feedbackEl) feedbackEl.style.display = "none";
+            } catch (err) {
+                console.error("Failed to load interview problem:", err);
+            }
+        }
+
+        async function startMockInterview() {
+            try {
+                const track = document.getElementById("mockTrack").value;
+                const duration = parseInt(document.getElementById("mockDuration").value);
+                const language = document.getElementById("mockLanguage").value;
+                const problemCount = parseInt(document.getElementById("mockProblemCount").value);
+
+                const payload = {
+                    track: track,
+                    duration_minutes: duration,
+                    language: language,
+                    problem_count: problemCount
+                };
+
+                const res = await fetch("/api/interview/start", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    showToast("Mock interview started! Good luck.", "success");
+                    await reloadInterviewState();
+                    reloadInterviewHistory();
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Failed to start interview", "error");
+                }
+            } catch (err) {
+                showToast("Error starting interview session", "error");
+            }
+        }
+
+        async function saveInterviewDraft() {
+            if (!activeInterviewId) return;
+            try {
+                const code = document.getElementById("interviewCodeEditor").value;
+                const res = await fetch(`/api/interview/${activeInterviewId}/draft`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ code: code })
+                });
+                if (res.ok) {
+                    showToast("Draft saved locally", "success");
+                }
+            } catch (err) {
+                showToast("Failed to save draft", "error");
+            }
+        }
+
+        async function submitInterviewSolution() {
+            if (!activeInterviewId) return;
+            try {
+                const code = document.getElementById("interviewCodeEditor").value;
+                const feedbackEl = document.getElementById("interviewRunFeedback");
+                if (feedbackEl) {
+                    feedbackEl.style.display = "block";
+                    feedbackEl.innerHTML = '<span style="color: var(--primary);">Running tests against local judge...</span>';
+                }
+
+                const res = await fetch(`/api/interview/${activeInterviewId}/submit`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ code: code })
+                });
+
+                if (res.ok) {
+                    const sub = await res.json();
+                    let statusColor = sub.status === "passed" ? "var(--success)" : "var(--danger)";
+                    let statusText = sub.status === "passed" ? "PASSED (All test cases passed)" : `FAILED (${sub.status.toUpperCase()})`;
+
+                    if (feedbackEl) {
+                        feedbackEl.innerHTML = `
+                            <div style="font-weight: 700; color: ${statusColor}; margin-bottom: 4px;">${statusText}</div>
+                            <div style="color: var(--text-muted);">Tests: <strong>${sub.passed_count}/${sub.total_tests}</strong> passed | Readability: <strong>${sub.readability_score}/100</strong> | Big-O Time: <strong>${sub.estimated_time_complexity}</strong></div>
+                            ${sub.error_detail ? `<div style="color: #f87171; margin-top: 4px; font-family: monospace; font-size: 0.8rem;">${sub.error_detail}</div>` : ''}
+                        `;
+                    }
+                    showToast(sub.status === "passed" ? "Solution passed all tests!" : "Test run finished with errors", sub.status === "passed" ? "success" : "warning");
+                    await reloadInterviewState();
+                } else {
+                    const err = await res.json();
+                    if (feedbackEl) feedbackEl.innerHTML = `<span style="color: var(--danger);">${err.error || "Submission failed"}</span>`;
+                }
+            } catch (err) {
+                showToast("Error submitting solution", "error");
+            }
+        }
+
+        async function advanceInterviewProblem() {
+            if (!activeInterviewId) return;
+            try {
+                const res = await fetch(`/api/interview/${activeInterviewId}/advance`, {
+                    method: "POST"
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    loadInterviewProblem(data.current_problem_index);
+                    renderInterviewProblemSteps(data.problems, data.current_problem_index);
+                }
+            } catch (err) {
+                console.error("Failed to advance problem:", err);
+            }
+        }
+
+        async function finishMockInterview() {
+            if (!activeInterviewId) return;
+            if (!confirm("Are you ready to submit your assessment and view your evaluation report?")) return;
+
+            try {
+                const res = await fetch(`/api/interview/${activeInterviewId}/finish`, {
+                    method: "POST"
+                });
+                if (res.ok) {
+                    const report = await res.json();
+                    showToast("Interview completed! Generating report.", "success");
+                    displayInterviewReport(report);
+                    await reloadInterviewState();
+                    reloadInterviewHistory();
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Failed to finish interview", "error");
+                }
+            } catch (err) {
+                showToast("Error finishing interview", "error");
+            }
+        }
+
+        function displayInterviewReport(report) {
+            const reportView = document.getElementById("interviewReportView");
+            if (!reportView) return;
+
+            reportView.style.display = "block";
+            document.getElementById("reportTitle").textContent = report.title || "Assessment Report";
+            document.getElementById("reportSub").textContent = `${(report.track || '').toUpperCase()} Track • ${report.duration_minutes}m • Time Taken: ${Math.floor(report.time_taken_seconds / 60)}m ${report.time_taken_seconds % 60}s`;
+            document.getElementById("reportTotalScore").textContent = Math.round(report.rubric.total_score);
+
+            document.getElementById("rubricCorrectness").textContent = `${report.rubric.correctness_score}/40`;
+            document.getElementById("rubricCompletion").textContent = `${report.rubric.completion_score}/20`;
+            document.getElementById("rubricStructure").textContent = `${report.rubric.structure_score}/15`;
+            document.getElementById("rubricComplexity").textContent = `${report.rubric.complexity_score}/15`;
+            document.getElementById("rubricTime").textContent = `${report.rubric.time_management_score}/10`;
+
+            const feedbackEl = document.getElementById("reportFeedbackDetails");
+            feedbackEl.innerHTML = `
+                <strong>Feedback Summary:</strong> ${report.summary_feedback}<br>
+                ${(report.correctness_observations || []).map(o => `• ${o}`).join("<br>")}
+                ${(report.time_management_observations || []).map(o => `<br>• ${o}`).join("")}
+                ${(report.code_quality_observations || []).map(o => `<br>• ${o}`).join("")}
+                ${(report.complexity_observations || []).map(o => `<br>• ${o}`).join("")}
+            `;
+
+            const recTopics = document.getElementById("reportRecommendedTopics");
+            recTopics.innerHTML = (report.recommended_topics || []).map(t => `<li>${t}</li>`).join("") || '<li>Arrays & Hashing</li>';
+
+            const recRevs = document.getElementById("reportRecommendedRevisions");
+            recRevs.innerHTML = (report.recommended_revisions || []).map(r => `<li>${r}</li>`).join("") || '<li>Review previously solved problems</li>';
+
+            reportView.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        async function viewInterviewReport(interviewId) {
+            try {
+                const res = await fetch(`/api/interview/${interviewId}/report`);
+                if (res.ok) {
+                    const report = await res.json();
+                    displayInterviewReport(report);
+                } else {
+                    showToast("No assessment report found for this session.", "warning");
+                }
+            } catch (err) {
+                showToast("Failed to load assessment report", "error");
+            }
+        }
+
+        async function reloadInterviewHistory() {
+            try {
+                const res = await fetch("/api/interview/history?limit=10");
+                if (!res.ok) return;
+                const history = await res.json();
+
+                const tbody = document.getElementById("interviewHistoryTableBody");
+                if (!tbody) return;
+
+                if (!history || history.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="padding: 8px; color: var(--text-muted); text-align: center;">No assessments recorded yet.</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = history.map(h => {
+                    const scoreDisplay = h.total_score !== null ? `<strong>${Math.round(h.total_score)}</strong>/100` : '-';
+                    const dateStr = h.created_at ? h.created_at.substring(0, 10) : '';
+                    let statusBadge = `<span class="status-badge badge-${h.status}">${h.status}</span>`;
+                    return `
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <td style="padding: 6px 8px; color: var(--text-muted);">${dateStr}</td>
+                            <td style="padding: 6px 8px; font-weight: 600; color: var(--text);">${h.title}</td>
+                            <td style="padding: 6px 8px;">${(h.track || '').toUpperCase()}</td>
+                            <td style="padding: 6px 8px;">${h.duration_minutes}m</td>
+                            <td style="padding: 6px 8px; color: var(--primary);">${scoreDisplay}</td>
+                            <td style="padding: 6px 8px;">${statusBadge}</td>
+                            <td style="padding: 6px 8px; text-align: right;">
+                                <button class="btn btn-secondary btn-sm" onclick="viewInterviewReport('${h.interview_id}')" style="padding: 2px 8px; font-size: 0.75rem;">View Report</button>
+                            </td>
+                        </tr>
+                    `;
+                }).join("");
+            } catch (err) {
+                console.error("Failed to load interview history:", err);
+            }
+        }
+
+        // Initialize Coach, Revision, Goals, Roadmap, Daily Mission, Workspace, Portfolio, and Interview on window load
         window.addEventListener("DOMContentLoaded", () => {
             initCoach();
             reloadRevisionQueue();
@@ -2643,6 +3217,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             reloadDailyMission();
             openProblemInWorkspace("two-sum");
             reloadPortfolioPreview();
+            reloadInterviewState();
+            reloadInterviewHistory();
         });
 
         // Close modal on outside click
@@ -4004,6 +4580,231 @@ def create_app(
             as_attachment=True,
             download_name=filename,
         )
+
+    # =========================================================================
+    # Mock Interview & Technical Assessment Endpoints (Milestone 6.3.19)
+    # =========================================================================
+
+    @app.route("/api/interview")
+    def api_interview_active():
+        """Retrieve active mock interview session or default state."""
+        mgr = InterviewManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        active = mgr.get_active_interview()
+        if not active:
+            return jsonify({
+                "status": "none",
+                "message": "No active mock interview session.",
+                "available_tracks": [t.value for t in InterviewTrack],
+                "available_durations": [30, 45, 60],
+            })
+        from dataclasses import asdict
+        return jsonify(asdict(active))
+
+    @app.route("/api/interview/start", methods=["POST"])
+    def api_interview_start():
+        """Configure, select problems, and start a new timed mock interview session."""
+        req_data = request.get_json(silent=True) or {}
+        track = req_data.get("track", "intermediate")
+        duration = int(req_data.get("duration_minutes", 45))
+        language = req_data.get("language", "python")
+        problem_count = int(req_data.get("problem_count", 2))
+        title = req_data.get("title")
+
+        mgr = InterviewManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            session = mgr.create_interview(
+                track=track,
+                duration_minutes=duration,
+                language=language,
+                problem_count=problem_count,
+                title=title,
+                auto_start=True,
+            )
+            from dataclasses import asdict
+            return jsonify(asdict(session)), 201
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/interview/<interview_id>")
+    def api_interview_get(interview_id: str):
+        """Retrieve interview state, remaining time, and problem overview."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", interview_id):
+            return jsonify({"error": "Invalid interview_id format"}), 400
+
+        mgr = InterviewManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        interview = mgr.get_interview(interview_id)
+        if not interview:
+            return jsonify({"error": f"Interview '{interview_id}' not found"}), 404
+
+        from dataclasses import asdict
+        return jsonify(asdict(interview))
+
+    @app.route("/api/interview/<interview_id>/problem")
+    def api_interview_get_problem(interview_id: str):
+        """Retrieve problem context, metadata, and constraints for interview problem."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", interview_id):
+            return jsonify({"error": "Invalid interview_id format"}), 400
+
+        idx_str = request.args.get("index")
+        idx = int(idx_str) if idx_str is not None and idx_str.isdigit() else None
+
+        mgr = InterviewManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            ctx = mgr.get_current_problem(interview_id, problem_index=idx)
+            from dataclasses import asdict
+            return jsonify(asdict(ctx))
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 404
+
+    @app.route("/api/interview/<interview_id>/draft", methods=["POST"])
+    def api_interview_save_draft(interview_id: str):
+        """Save draft code for an interview problem."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", interview_id):
+            return jsonify({"error": "Invalid interview_id format"}), 400
+
+        req_data = request.get_json(silent=True) or {}
+        code = req_data.get("code", "")
+        problem_id = req_data.get("problem_id")
+
+        mgr = InterviewManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            draft = mgr.save_draft(interview_id=interview_id, code=code, problem_id=problem_id)
+            return jsonify(draft)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/interview/<interview_id>/submit", methods=["POST"])
+    def api_interview_submit(interview_id: str):
+        """Run candidate solution against local judge and record submission."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", interview_id):
+            return jsonify({"error": "Invalid interview_id format"}), 400
+
+        req_data = request.get_json(silent=True) or {}
+        code = req_data.get("code")
+        problem_id = req_data.get("problem_id")
+        timeout = int(req_data.get("timeout", 10))
+
+        mgr = InterviewManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            sub = mgr.submit_solution(
+                interview_id=interview_id,
+                code=code,
+                problem_id=problem_id,
+                timeout=timeout,
+            )
+            from dataclasses import asdict
+            return jsonify(asdict(sub))
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/interview/<interview_id>/advance", methods=["POST"])
+    def api_interview_advance(interview_id: str):
+        """Advance candidate to the next assigned problem."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", interview_id):
+            return jsonify({"error": "Invalid interview_id format"}), 400
+
+        mgr = InterviewManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            session = mgr.advance_problem(interview_id)
+            from dataclasses import asdict
+            return jsonify(asdict(session))
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/interview/<interview_id>/finish", methods=["POST"])
+    def api_interview_finish(interview_id: str):
+        """Finish interview session, evaluate performance, and generate final report."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", interview_id):
+            return jsonify({"error": "Invalid interview_id format"}), 400
+
+        mgr = InterviewManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            report = mgr.finish_interview(interview_id)
+            from dataclasses import asdict
+            return jsonify(asdict(report))
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/interview/<interview_id>/report")
+    def api_interview_report(interview_id: str):
+        """Retrieve evaluation report for an interview session."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", interview_id):
+            return jsonify({"error": "Invalid interview_id format"}), 400
+
+        mgr = InterviewManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        interview = mgr.get_interview(interview_id)
+        if not interview:
+            return jsonify({"error": f"Interview '{interview_id}' not found"}), 404
+
+        if interview.assessment:
+            from dataclasses import asdict
+            return jsonify(asdict(interview.assessment))
+
+        try:
+            report = mgr.finish_interview(interview_id)
+            from dataclasses import asdict
+            return jsonify(asdict(report))
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/interview/history")
+    def api_interview_history():
+        """Retrieve historical interview sessions."""
+        try:
+            limit = int(request.args.get("limit", 10))
+        except ValueError:
+            limit = 10
+
+        mgr = InterviewManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        history = mgr.list_interview_history(limit=limit)
+        return jsonify(history)
+
+    @app.route("/api/interview/history/<interview_id>")
+    def api_interview_history_detail(interview_id: str):
+        """Retrieve detailed past interview session with submissions and evaluation."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", interview_id):
+            return jsonify({"error": "Invalid interview_id format"}), 400
+
+        mgr = InterviewManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        interview = mgr.get_interview(interview_id)
+        if not interview:
+            return jsonify({"error": f"Interview '{interview_id}' not found"}), 404
+
+        from dataclasses import asdict
+        return jsonify(asdict(interview))
 
     return app
 

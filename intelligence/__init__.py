@@ -41,6 +41,17 @@ from intelligence.insights import (
     LearningInsightsReport,
     TopicImprovementMetric,
 )
+from intelligence.mock_interview import (
+    ASSESSMENT_DISCLAIMER,
+    AssessmentReport,
+    InterviewManager,
+    InterviewProblemItem,
+    InterviewStatus,
+    InterviewSubmission,
+    InterviewTrack,
+    MockInterviewSession,
+    RubricScoreBreakdown,
+)
 from intelligence.planner import (
     LearningSessionPlan,
     PlannedProblem,
@@ -199,4 +210,13 @@ __all__ = [
     "SolutionQualitySummary",
     "LearningJourneyEvent",
     "DEFAULT_PORTFOLIO_EXPORTS_DIR",
+    "InterviewManager",
+    "InterviewTrack",
+    "InterviewStatus",
+    "InterviewProblemItem",
+    "InterviewSubmission",
+    "RubricScoreBreakdown",
+    "AssessmentReport",
+    "MockInterviewSession",
+    "ASSESSMENT_DISCLAIMER",
 ]

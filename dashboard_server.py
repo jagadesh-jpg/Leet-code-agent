@@ -22,6 +22,11 @@ from intelligence.adaptive import AdaptiveLearningEngine
 from intelligence.coach import OfflineCodingCoach
 from intelligence.insights import LearningInsightsEngine
 from intelligence.planner import SessionPlanner
+from intelligence.revision import (
+    RevisionOutcome,
+    RevisionStatus,
+    SpacedRevisionEngine,
+)
 from intelligence.tracker import (
     DEFAULT_TRACKING_DB_PATH,
     ProblemProgressStatus,
@@ -556,6 +561,76 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             </div>
         </div>
 
+        <!-- Spaced Repetition & Smart Revision Center (Milestone 6.3.12) -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Spaced Repetition & Smart Revision Center</h2>
+                <button class="btn btn-secondary btn-sm" onclick="reloadRevisionQueue()">Refresh Queue</button>
+            </div>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px;">
+                Long-term algorithmic concept retention system based on deterministic Leitner intervals. Retention indicators reflect learning history proxies, not scientific memory measurements.
+            </p>
+
+            <div class="grid-stats" style="margin-bottom: 16px;">
+                <div class="stat-card" style="padding: 14px;">
+                    <div class="label">Due Today</div>
+                    <div class="value" id="revDueToday" style="font-size: 1.5rem; color: #fde047;">0</div>
+                    <div class="subtext">Ready for review</div>
+                </div>
+                <div class="stat-card" style="padding: 14px;">
+                    <div class="label">Overdue</div>
+                    <div class="value" id="revOverdue" style="font-size: 1.5rem; color: #fca5a5;">0</div>
+                    <div class="subtext">Urgent catch-up</div>
+                </div>
+                <div class="stat-card" style="padding: 14px;">
+                    <div class="label">Upcoming</div>
+                    <div class="value" id="revUpcoming" style="font-size: 1.5rem; color: #93c5fd;">0</div>
+                    <div class="subtext">Future revision dates</div>
+                </div>
+                <div class="stat-card" style="padding: 14px;">
+                    <div class="label">Reviews Completed</div>
+                    <div class="value" id="revCompleted" style="font-size: 1.5rem; color: #86efac;">0</div>
+                    <div class="subtext" id="revStreak">0 day streak</div>
+                </div>
+            </div>
+
+            <!-- Schedule new problem into revision queue controls -->
+            <div class="controls-bar">
+                <label for="revScheduleSelect">Add Problem to Revision Queue:</label>
+                <select id="revScheduleSelect">
+                    <option value="two-sum">Two Sum (Easy)</option>
+                    <option value="valid-parentheses">Valid Parentheses (Easy)</option>
+                    <option value="contains-duplicate">Contains Duplicate (Easy)</option>
+                    <option value="maximum-subarray">Maximum Subarray (Medium)</option>
+                    <option value="reverse-linked-list">Reverse Linked List (Easy)</option>
+                    <option value="merge-two-sorted-lists">Merge Two Sorted Lists (Easy)</option>
+                    <option value="longest-substring-without-repeating-characters">Longest Substring (Medium)</option>
+                    <option value="climbing-stairs">Climbing Stairs (Easy)</option>
+                    <option value="best-time-to-buy-and-sell-stock">Best Time to Buy and Sell Stock (Easy)</option>
+                    <option value="binary-search">Binary Search (Easy)</option>
+                </select>
+                <button class="btn btn-success btn-sm" onclick="scheduleSelectedRevision()">Schedule Revision</button>
+            </div>
+
+            <!-- Revision Queue Table -->
+            <table>
+                <thead>
+                    <tr>
+                        <th>Problem ID</th>
+                        <th>Difficulty</th>
+                        <th>Topics</th>
+                        <th>Interval</th>
+                        <th>Next Review</th>
+                        <th>Status</th>
+                        <th>Log Outcome</th>
+                    </tr>
+                </thead>
+                <tbody id="revisionTableBody">
+                    <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Loading revision queue...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
         <footer>
             LeetCode Agent • Local Interactive Learning Workspace • No Live Account Modification
         </footer>
@@ -937,9 +1012,119 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             }
         }
 
-        // Initialize Coach on window load
+        // Spaced Repetition interactions
+        async function reloadRevisionQueue() {
+            try {
+                const res = await fetch("/api/revision/queue");
+                const queue = await res.json();
+                const analyticsRes = await fetch("/api/revision/analytics");
+                const stats = await analyticsRes.json();
+
+                if (analyticsRes.ok) {
+                    document.getElementById("revDueToday").innerText = stats.reviews_due_today;
+                    document.getElementById("revOverdue").innerText = stats.reviews_overdue;
+                    document.getElementById("revUpcoming").innerText = stats.reviews_upcoming;
+                    document.getElementById("revCompleted").innerText = stats.reviews_completed;
+                    document.getElementById("revStreak").innerText = `${stats.active_streak_days} day streak`;
+                }
+
+                const tbody = document.getElementById("revisionTableBody");
+                tbody.innerHTML = "";
+                if (!queue || queue.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">(Spaced repetition queue is clear)</td></tr>';
+                    return;
+                }
+
+                queue.forEach(item => {
+                    const tr = document.createElement("tr");
+                    tr.innerHTML = `
+                        <td style="font-weight: 600;">${escapeHtml(item.problem_id)}</td>
+                        <td><span class="badge-${item.difficulty}">${item.difficulty}</span></td>
+                        <td>${escapeHtml((item.topics || []).join(", "))}</td>
+                        <td>${item.interval_days} day(s)</td>
+                        <td>${escapeHtml(item.next_review_at)}</td>
+                        <td><span class="status-badge badge-${item.status}">${item.status.toUpperCase()}</span></td>
+                        <td>
+                            <button class="btn btn-success btn-sm" onclick="logRevisionOutcome('${item.problem_id}', 'easy_recall')" title="Easy Recall (SM-2 bonus)">Easy</button>
+                            <button class="btn btn-secondary btn-sm" onclick="logRevisionOutcome('${item.problem_id}', 'effort_recall')" title="Deliberate Effort">Effort</button>
+                            <button class="btn btn-secondary btn-sm" onclick="logRevisionOutcome('${item.problem_id}', 'needed_hints')" title="Needed Hints">Hints</button>
+                            <button class="btn btn-danger btn-sm" onclick="logRevisionOutcome('${item.problem_id}', 'failed_to_solve')" title="Failed to Solve (reset)">Fail</button>
+                            ${item.status === 'paused' ? `
+                                <button class="btn btn-secondary btn-sm" onclick="togglePauseRevision('${item.problem_id}', false)">Resume</button>
+                            ` : `
+                                <button class="btn btn-secondary btn-sm" onclick="togglePauseRevision('${item.problem_id}', true)">Pause</button>
+                            `}
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                showAlert("Error loading revision queue", false);
+            }
+        }
+
+        async function scheduleSelectedRevision() {
+            const pid = document.getElementById("revScheduleSelect").value;
+            try {
+                const res = await fetch("/api/revision/schedule", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ problem_id: pid })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showAlert(`Problem '${pid}' scheduled for revision!`);
+                    reloadRevisionQueue();
+                } else {
+                    showAlert(data.error || "Failed to schedule revision", false);
+                }
+            } catch (err) {
+                showAlert("Error scheduling revision", false);
+            }
+        }
+
+        async function logRevisionOutcome(problemId, outcome) {
+            try {
+                const res = await fetch(`/api/revision/${problemId}/outcome`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ outcome: outcome })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showAlert(`Outcome recorded for '${problemId}': Next review on ${data.next_review_at}`);
+                    reloadRevisionQueue();
+                } else {
+                    showAlert(data.error || "Failed to record outcome", false);
+                }
+            } catch (err) {
+                showAlert("Error recording outcome", false);
+            }
+        }
+
+        async function togglePauseRevision(problemId, paused) {
+            try {
+                const res = await fetch(`/api/revision/${problemId}/pause`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ paused: paused })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showAlert(`Revision for '${problemId}' ${paused ? 'paused' : 'resumed'}`);
+                    reloadRevisionQueue();
+                } else {
+                    showAlert(data.error || "Update failed", false);
+                }
+            } catch (err) {
+                showAlert("Error updating status", false);
+            }
+        }
+
+        // Initialize Coach and Revision on window load
         window.addEventListener("DOMContentLoaded", () => {
             initCoach();
+            reloadRevisionQueue();
         });
 
         // Close modal on outside click
@@ -1284,6 +1469,109 @@ def create_app(
 
         from dataclasses import asdict
         return jsonify(asdict(hint))
+
+    @app.route("/api/revision/queue")
+    def api_revision_queue():
+        """Retrieve the prioritized spaced revision queue."""
+        rev_engine = SpacedRevisionEngine(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        status_filter = request.args.get("status")
+        items = rev_engine.list_queue(status_filter=status_filter)
+        from dataclasses import asdict
+        return jsonify([asdict(i) for i in items])
+
+    @app.route("/api/revision/analytics")
+    def api_revision_analytics():
+        """Retrieve aggregated spaced repetition metrics and retention proxies."""
+        rev_engine = SpacedRevisionEngine(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        analytics = rev_engine.get_analytics()
+        from dataclasses import asdict
+        return jsonify(asdict(analytics))
+
+    @app.route("/api/revision/schedule", methods=["POST"])
+    def api_revision_schedule():
+        """Schedule a problem into the spaced repetition queue."""
+        req_data = request.get_json(silent=True) or {}
+        problem_id = req_data.get("problem_id")
+        if not problem_id or not re.match(r"^[a-zA-Z0-9_\-]+$", str(problem_id)):
+            return jsonify({"error": "Invalid problem identifier"}), 400
+
+        # Check problem existence
+        all_problems = load_problems()
+        p = next((prob for prob in all_problems if prob["id"] == problem_id), None)
+        if not p:
+            cp = store.get_custom_problem(problem_id, db_path=db_path)
+            if cp:
+                p = cp
+            else:
+                return jsonify({"error": f"Problem '{problem_id}' not found"}), 404
+
+        rev_engine = SpacedRevisionEngine(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        item = rev_engine.schedule_problem(p)
+        from dataclasses import asdict
+        return jsonify({
+            "message": f"Problem '{problem_id}' scheduled for revision",
+            "item": asdict(item),
+        }), 201
+
+    @app.route("/api/revision/<problem_id>/outcome", methods=["POST"])
+    def api_revision_outcome(problem_id: str):
+        """Log a recall outcome for a problem (easy_recall, effort_recall, needed_hints, failed_to_solve)."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", problem_id):
+            return jsonify({"error": "Invalid problem identifier"}), 400
+
+        req_data = request.get_json(silent=True) or {}
+        outcome_str = req_data.get("outcome")
+        valid_outcomes = {o.value: o for o in RevisionOutcome}
+        if outcome_str not in valid_outcomes:
+            return jsonify({"error": f"Outcome must be one of {list(valid_outcomes.keys())}"}), 400
+
+        rev_engine = SpacedRevisionEngine(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            updated = rev_engine.record_revision_outcome(problem_id, valid_outcomes[outcome_str])
+            return jsonify({
+                "message": f"Outcome recorded: {outcome_str}",
+                "problem_id": updated.problem_id,
+                "interval_days": updated.interval_days,
+                "next_review_at": updated.next_review_at,
+                "status": updated.status.value,
+            })
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/revision/<problem_id>/pause", methods=["POST"])
+    def api_revision_pause(problem_id: str):
+        """Pause or resume a problem in the revision queue."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", problem_id):
+            return jsonify({"error": "Invalid problem identifier"}), 400
+
+        req_data = request.get_json(silent=True) or {}
+        paused = bool(req_data.get("paused", True))
+
+        rev_engine = SpacedRevisionEngine(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            updated = rev_engine.set_paused(problem_id, paused)
+            return jsonify({
+                "message": f"Problem '{problem_id}' is now {updated.status.value}",
+                "problem_id": updated.problem_id,
+                "status": updated.status.value,
+            })
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
 
     return app
 

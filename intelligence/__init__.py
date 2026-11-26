@@ -28,6 +28,13 @@ from intelligence.planner import (
     SessionPlanner,
     SessionProblemRole,
 )
+from intelligence.revision import (
+    RevisionAnalytics,
+    RevisionItem,
+    RevisionOutcome,
+    RevisionStatus,
+    SpacedRevisionEngine,
+)
 from intelligence.selector import ProblemScoreBreakdown, ProblemSelector
 from intelligence.topics import (
     CURATED_PROBLEM_TOPICS,
@@ -81,4 +88,9 @@ __all__ = [
     "PersonalizedCoachInsight",
     "CoachOverview",
     "CURATED_PROBLEM_HINTS",
+    "SpacedRevisionEngine",
+    "RevisionStatus",
+    "RevisionOutcome",
+    "RevisionItem",
+    "RevisionAnalytics",
 ]

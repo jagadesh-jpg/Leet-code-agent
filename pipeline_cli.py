@@ -282,6 +282,11 @@ def main():
         help="Display aggregate session completion analytics and feedback",
     )
     parser.add_argument(
+        "--adaptive",
+        action="store_true",
+        help="Display adaptive learning intelligence synthesis and next action recommendation",
+    )
+    parser.add_argument(
         "--tracking-db-path",
         type=str,
         default=None,
@@ -513,6 +518,56 @@ def main():
             print("  RECENT SESSIONS:")
             for s in stats.recent_sessions:
                 print(f"    - [{s['status'].upper():<11}] {s['session_id']} ({s['created_at'][:10]}) : {s['summary'][:60]}...")
+        print("=" * 80 + "\n")
+        sys.exit(0)
+
+    if args.adaptive:
+        from intelligence.adaptive import AdaptiveLearningEngine
+        from problems import load_problems
+        engine = AdaptiveLearningEngine(
+            progress_db_path=args.db_path,
+            tracking_db_path=args.tracking_db_path,
+            language=args.language,
+        )
+        candidates = load_problems()
+        report = engine.analyze_and_recommend(
+            candidate_problems=candidates,
+            user_specified_size=args.session_size if "--session-size" in sys.argv else None,
+        )
+
+        print("=" * 80)
+        print("  ADAPTIVE LEARNING & PROGRESS INTELLIGENCE REPORT")
+        print("=" * 80)
+        print(f"  Target Language:           {report.target_language}")
+        print(f"  Overall Learning Status:   {report.overall_status}")
+        print("-" * 80)
+        print("  TOPIC MASTERY SNAPSHOT:")
+        print(f"    - Needs Practice:        {', '.join(report.topics_needing_practice) if report.topics_needing_practice else 'None (no weak topics identified)'}")
+        print(f"    - Proficient / Mastered: {', '.join(report.proficient_topics) if report.proficient_topics else 'None'}")
+        print(f"    - Untouched Topics:      {', '.join(report.untouched_topics[:5]) if report.untouched_topics else 'None'}")
+        print("-" * 80)
+        print("  PRIMARY RECOMMENDED ACTION:")
+        p_rec = report.primary_recommendation
+        print(f"    Action:     [{p_rec.action_type.value.upper()}] {p_rec.title}")
+        print(f"    Target:     {p_rec.target_identifier or 'General'}")
+        print(f"    Confidence: {p_rec.confidence.upper()}")
+        print(f"    Rationale:  {p_rec.rationale}")
+        if p_rec.evidence:
+            print("    Evidence:")
+            for ev in p_rec.evidence:
+                print(f"      * {ev}")
+        if report.secondary_recommendations:
+            print("-" * 80)
+            print("  SECONDARY RECOMMENDATIONS:")
+            for s_rec in report.secondary_recommendations:
+                print(f"    - [{s_rec.action_type.value}] {s_rec.title} -> {s_rec.rationale}")
+        if report.session_sizing:
+            print("-" * 80)
+            sz = report.session_sizing
+            print("  ADAPTIVE SESSION SIZING SUGGESTION:")
+            print(f"    Suggested Size: {sz.recommended_size} problem(s) (Standard default: {sz.default_size})")
+            print(f"    Rationale:      {sz.rationale}")
+            print(f"    Confidence:     {'Sufficient data' if sz.has_sufficient_evidence else 'Preliminary (insufficient tracked sessions)'}")
         print("=" * 80 + "\n")
         sys.exit(0)
 

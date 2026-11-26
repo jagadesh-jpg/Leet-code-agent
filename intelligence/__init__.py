@@ -1,5 +1,12 @@
 """Intelligence and problem selection package for LeetCode Agent."""
 
+from intelligence.adaptive import (
+    AdaptiveLearningEngine,
+    AdaptiveLearningReport,
+    AdaptiveSessionSizing,
+    NextActionRecommendation,
+    RecommendedActionType,
+)
 from intelligence.planner import (
     LearningSessionPlan,
     PlannedProblem,
@@ -43,4 +50,9 @@ __all__ = [
     "TrackedSessionRecord",
     "TrackingAnalytics",
     "DEFAULT_TRACKING_DB_PATH",
+    "AdaptiveLearningEngine",
+    "AdaptiveLearningReport",
+    "AdaptiveSessionSizing",
+    "NextActionRecommendation",
+    "RecommendedActionType",
 ]

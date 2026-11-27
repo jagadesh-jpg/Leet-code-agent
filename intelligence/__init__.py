@@ -141,6 +141,16 @@ from intelligence.practice_session import (
     PracticeSessionStatus,
     SessionSummary,
 )
+from intelligence.coding_behavior import (
+    BehaviorAnalysisReport,
+    BehaviorCategory,
+    BehaviorEvidence,
+    CodingBehaviorAnalyzer,
+    CodingBehaviorInsight,
+    CodingBehaviorPattern,
+    CodingBehaviorProfile,
+    InsightSeverity,
+)
 from intelligence.preparation_planner import (
     IntensityLevel,
     PlanProgress,
@@ -278,4 +288,12 @@ __all__ = [
     "PracticeSessionStatus",
     "PracticeSessionNotes",
     "SessionSummary",
+    "CodingBehaviorAnalyzer",
+    "CodingBehaviorProfile",
+    "CodingBehaviorInsight",
+    "CodingBehaviorPattern",
+    "BehaviorCategory",
+    "InsightSeverity",
+    "BehaviorEvidence",
+    "BehaviorAnalysisReport",
 ]

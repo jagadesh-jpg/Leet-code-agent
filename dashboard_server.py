@@ -52,6 +52,16 @@ from intelligence.mock_interview import (
     InterviewTrack,
     MockInterviewSession,
 )
+from intelligence.coding_behavior import (
+    BehaviorAnalysisReport,
+    BehaviorCategory,
+    BehaviorEvidence,
+    CodingBehaviorAnalyzer,
+    CodingBehaviorInsight,
+    CodingBehaviorPattern,
+    CodingBehaviorProfile,
+    InsightSeverity,
+)
 from intelligence.planner import SessionPlanner
 from intelligence.portfolio import (
     DEFAULT_PORTFOLIO_EXPORTS_DIR,
@@ -1728,6 +1738,87 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- Personal Coding Behavior Intelligence Panel (Milestone 6.3.23) -->
+        <div class="card" id="codingBehaviorCard" style="border-top: 3px solid #8b5cf6;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <h2 style="margin: 0; font-size: 1.2rem; color: var(--text);">🧠 Personal Coding Behavior Intelligence</h2>
+                    <span id="cbConfidenceBadge" class="badge" style="background: rgba(139, 92, 246, 0.2); color: #c4b5fd; font-size: 0.75rem;">BASELINE</span>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-primary btn-sm" onclick="runBehaviorAnalysis()">⚡ Analyze Now</button>
+                    <button class="btn btn-secondary btn-sm" onclick="reloadCodingBehavior()">🔄 Refresh</button>
+                </div>
+            </div>
+
+            <!-- Quick Metrics Grid -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 16px;">
+                <div style="background: rgba(15, 23, 42, 0.5); padding: 10px; border-radius: 6px; border: 1px solid var(--border);">
+                    <span style="color: var(--text-muted); font-size: 0.75rem; display: block;">Total Evidence Events</span>
+                    <strong id="cbTotalEvents" style="font-size: 1.1rem; color: var(--text);">0</strong>
+                </div>
+                <div style="background: rgba(15, 23, 42, 0.5); padding: 10px; border-radius: 6px; border: 1px solid var(--border);">
+                    <span style="color: var(--text-muted); font-size: 0.75rem; display: block;">Confidence Level</span>
+                    <strong id="cbConfidence" style="font-size: 1.1rem; color: #c4b5fd;">insufficient_data</strong>
+                </div>
+                <div style="background: rgba(15, 23, 42, 0.5); padding: 10px; border-radius: 6px; border: 1px solid var(--border);">
+                    <span style="color: var(--text-muted); font-size: 0.75rem; display: block;">First-Attempt Pass Rate</span>
+                    <strong id="cbFirstPassRate" style="font-size: 1.1rem; color: var(--success);">0%</strong>
+                </div>
+                <div style="background: rgba(15, 23, 42, 0.5); padding: 10px; border-radius: 6px; border: 1px solid var(--border);">
+                    <span style="color: var(--text-muted); font-size: 0.75rem; display: block;">Debugging Persistence</span>
+                    <strong id="cbPersistenceRate" style="font-size: 1.1rem; color: var(--primary);">0%</strong>
+                </div>
+                <div style="background: rgba(15, 23, 42, 0.5); padding: 10px; border-radius: 6px; border: 1px solid var(--border);">
+                    <span style="color: var(--text-muted); font-size: 0.75rem; display: block;">Session Completion</span>
+                    <strong id="cbSessionCompletion" style="font-size: 1.1rem; color: #38bdf8;">0%</strong>
+                </div>
+                <div style="background: rgba(15, 23, 42, 0.5); padding: 10px; border-radius: 6px; border: 1px solid var(--border);">
+                    <span style="color: var(--text-muted); font-size: 0.75rem; display: block;">Complexity Awareness</span>
+                    <strong id="cbComplexityRate" style="font-size: 1.1rem; color: #f59e0b;">0%</strong>
+                </div>
+            </div>
+
+            <!-- Multi-Dimension Behavioral Breakdown -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-bottom: 16px;">
+                <!-- Recurring Behavioral Patterns -->
+                <div style="background: rgba(15, 23, 42, 0.3); border: 1px solid var(--border); border-radius: 6px; padding: 12px;">
+                    <h4 style="margin: 0 0 8px 0; font-size: 0.9rem; color: var(--text); display: flex; align-items: center; gap: 6px;">
+                        <span>🔍</span> Detected Behavioral Patterns
+                    </h4>
+                    <div id="cbPatternsList" style="font-size: 0.8rem; color: var(--text-muted);">
+                        No recurring patterns identified yet.
+                    </div>
+                </div>
+
+                <!-- Actionable Insights -->
+                <div style="background: rgba(15, 23, 42, 0.3); border: 1px solid var(--border); border-radius: 6px; padding: 12px;">
+                    <h4 style="margin: 0 0 8px 0; font-size: 0.9rem; color: var(--text); display: flex; align-items: center; gap: 6px;">
+                        <span>💡</span> Actionable Behavioral Insights
+                    </h4>
+                    <div id="cbInsightsList" style="font-size: 0.8rem; color: var(--text-muted);">
+                        No behavioral insights available.
+                    </div>
+                </div>
+
+                <!-- Practice Recommendations -->
+                <div style="background: rgba(15, 23, 42, 0.3); border: 1px solid var(--border); border-radius: 6px; padding: 12px;">
+                    <h4 style="margin: 0 0 8px 0; font-size: 0.9rem; color: var(--text); display: flex; align-items: center; gap: 6px;">
+                        <span>📋</span> Practice Recommendations
+                    </h4>
+                    <div id="cbRecommendationsList" style="font-size: 0.8rem; color: var(--text-muted);">
+                        No active recommendations.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Limitations and Scope Disclaimer -->
+            <div style="background: rgba(30, 41, 59, 0.25); border: 1px dashed var(--border); border-radius: 6px; padding: 8px 12px; font-size: 0.75rem; color: var(--text-muted);">
+                <strong style="color: #94a3b8;">Disclaimer & Scope:</strong>
+                <span id="cbLimitationsText">Analysis is 100% offline and deterministic, derived purely from local test executions and session audit events. Strictly avoids psychological profiling, IQ evaluation, or external employment scoring.</span>
             </div>
         </div>
 
@@ -3786,6 +3877,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             reloadInterviewAnalytics();
             reloadPreparationPlanner();
             reloadActivePracticeSession();
+            reloadCodingBehavior();
         });
 
         // =========================================================================
@@ -4428,6 +4520,139 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 document.getElementById("sessionModal").style.display = "block";
             } catch (err) {
                 console.error("Failed to show practice history:", err);
+            }
+        }
+
+        // =========================================================================
+        // Milestone 6.3.23: Personal Coding Behavior Intelligence Client Functions
+        // =========================================================================
+
+        async function reloadCodingBehavior() {
+            try {
+                const res = await fetch("/api/coding-behavior");
+                if (!res.ok) return;
+                const data = await res.json();
+                renderCodingBehavior(data);
+            } catch (err) {
+                console.error("Failed to reload coding behavior data:", err);
+            }
+        }
+
+        async function runBehaviorAnalysis() {
+            try {
+                const res = await fetch("/api/coding-behavior/analyze", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({}),
+                });
+                if (res.ok) {
+                    showToast("Behavioral intelligence analysis complete!", "success");
+                    await reloadCodingBehavior();
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Analysis failed", "error");
+                }
+            } catch (err) {
+                showToast("Error running behavioral analysis", "error");
+            }
+        }
+
+        function renderCodingBehavior(data) {
+            if (!data) return;
+
+            // Update badge and top stats
+            const badge = document.getElementById("cbConfidenceBadge");
+            if (badge) {
+                badge.textContent = (data.confidence || "BASELINE").toUpperCase();
+                badge.style.background = data.sample_adequate ? "rgba(16, 185, 129, 0.2)" : "rgba(139, 92, 246, 0.2)";
+                badge.style.color = data.sample_adequate ? "#6ee7b7" : "#c4b5fd";
+            }
+
+            document.getElementById("cbTotalEvents").textContent = data.total_evidence_events || 0;
+            document.getElementById("cbConfidence").textContent = data.confidence || "insufficient_data";
+
+            const attempts = data.attempt_patterns || {};
+            document.getElementById("cbFirstPassRate").textContent = (attempts.first_attempt_pass_rate ?? 0) + "%";
+            document.getElementById("cbPersistenceRate").textContent = (attempts.persistence_rate ?? 0) + "%";
+
+            const sessions = data.session_behavior || {};
+            document.getElementById("cbSessionCompletion").textContent = (sessions.completion_rate ?? 0) + "%";
+
+            const psp = data.problem_solving_progression || {};
+            document.getElementById("cbComplexityRate").textContent = (psp.complexity_awareness_rate ?? 0) + "%";
+
+            // Render Patterns
+            const patList = document.getElementById("cbPatternsList");
+            if (patList) {
+                const patterns = data.patterns || [];
+                if (patterns.length === 0) {
+                    patList.innerHTML = "<p style='margin:0; color:var(--text-muted);'>No distinct recurring patterns identified yet.</p>";
+                } else {
+                    patList.innerHTML = patterns.map(p => `
+                        <div style="margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                                <strong style="color: var(--text);">${p.name}</strong>
+                                <span class="badge" style="font-size: 0.7rem; background: rgba(59, 130, 246, 0.15); color: #93c5fd;">${p.frequency}%</span>
+                            </div>
+                            <p style="margin: 0 0 2px 0; color: var(--text-muted); font-size: 0.75rem;">${p.description}</p>
+                            <span style="font-size: 0.7rem; color: #64748b;">Evidence: ${p.evidence_summary}</span>
+                        </div>
+                    `).join("");
+                }
+            }
+
+            // Render Insights
+            const insList = document.getElementById("cbInsightsList");
+            if (insList) {
+                const insights = data.insights || [];
+                if (insights.length === 0) {
+                    insList.innerHTML = "<p style='margin:0; color:var(--text-muted);'>No behavioral insights generated yet.</p>";
+                } else {
+                    insList.innerHTML = insights.map(i => {
+                        let color = "#93c5fd";
+                        let bg = "rgba(59, 130, 246, 0.15)";
+                        if (i.severity === "positive") { color = "#6ee7b7"; bg = "rgba(16, 185, 129, 0.15)"; }
+                        else if (i.severity === "attention") { color = "#fcd34d"; bg = "rgba(245, 158, 11, 0.15)"; }
+                        else if (i.severity === "recommendation") { color = "#c4b5fd"; bg = "rgba(139, 92, 246, 0.15)"; }
+
+                        return `
+                            <div style="margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                                    <strong style="color: var(--text);">${i.title}</strong>
+                                    <span class="badge" style="font-size: 0.65rem; background: ${bg}; color: ${color};">${(i.severity || 'info').toUpperCase()}</span>
+                                </div>
+                                <p style="margin: 0 0 2px 0; color: var(--text-muted); font-size: 0.75rem;">${i.description}</p>
+                                <span style="font-size: 0.7rem; color: #94a3b8; display: block;">🎯 Action: ${i.recommended_action}</span>
+                            </div>
+                        `;
+                    }).join("");
+                }
+            }
+
+            // Render Recommendations
+            const recList = document.getElementById("cbRecommendationsList");
+            if (recList) {
+                const recs = data.recommendations || [];
+                if (recs.length === 0) {
+                    recList.innerHTML = "<p style='margin:0; color:var(--text-muted);'>No practice recommendations at this time.</p>";
+                } else {
+                    recList.innerHTML = recs.map(r => `
+                        <div style="margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                                <strong style="color: var(--text);">${r.title}</strong>
+                                <span class="badge" style="font-size: 0.65rem; background: rgba(245, 158, 11, 0.2); color: #fcd34d;">${r.priority || 'P1'}</span>
+                            </div>
+                            <p style="margin: 0 0 2px 0; color: var(--text-muted); font-size: 0.75rem;">${r.rationale}</p>
+                            <span style="font-size: 0.7rem; color: #38bdf8; display: block;">👉 Suggested: ${r.suggested_action}</span>
+                        </div>
+                    `).join("");
+                }
+            }
+
+            // Render Limitations / Disclaimer
+            const limText = document.getElementById("cbLimitationsText");
+            if (limText && data.limitations && data.limitations.length > 0) {
+                limText.textContent = data.limitations.join(" • ");
             }
         }
 
@@ -6702,6 +6927,98 @@ def create_app(
             err_msg = str(e)
             code = 404 if "not found" in err_msg.lower() else 400
             return jsonify({"error": err_msg}), code
+
+    # =========================================================================
+    # Milestone 6.3.23: Personal Coding Behavior Intelligence REST Endpoints
+    # =========================================================================
+
+    @app.route("/api/coding-behavior")
+    def api_coding_behavior_overview():
+        """Retrieve overview summary of personal coding behavior intelligence."""
+        analyzer = CodingBehaviorAnalyzer(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        return jsonify(analyzer.get_overview())
+
+    @app.route("/api/coding-behavior/profile")
+    def api_coding_behavior_profile():
+        """Retrieve latest personal coding behavior profile."""
+        analyzer = CodingBehaviorAnalyzer(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        prof = analyzer.get_latest_profile()
+        from dataclasses import asdict
+        if not prof:
+            report = analyzer.analyze(save=False)
+            return jsonify(asdict(report.profile))
+        return jsonify(asdict(prof))
+
+    @app.route("/api/coding-behavior/insights")
+    def api_coding_behavior_insights():
+        """Retrieve list of behavioral insights with optional category/severity filters."""
+        category = request.args.get("category")
+        severity = request.args.get("severity")
+        try:
+            limit = int(request.args.get("limit", 20))
+        except ValueError:
+            limit = 20
+
+        if category and not re.match(r"^[a-zA-Z0-9_\-]+$", category):
+            return jsonify({"error": "Invalid category format"}), 400
+        if severity and not re.match(r"^[a-zA-Z0-9_\-]+$", severity):
+            return jsonify({"error": "Invalid severity format"}), 400
+
+        analyzer = CodingBehaviorAnalyzer(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        insights = analyzer.get_insights(category=category, severity=severity, limit=limit)
+        from dataclasses import asdict
+        return jsonify([asdict(ins) for ins in insights])
+
+    @app.route("/api/coding-behavior/history")
+    def api_coding_behavior_history():
+        """Retrieve list of historical behavioral analysis reports."""
+        try:
+            limit = int(request.args.get("limit", 10))
+        except ValueError:
+            limit = 10
+
+        analyzer = CodingBehaviorAnalyzer(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        return jsonify(analyzer.list_reports(limit=limit))
+
+    @app.route("/api/coding-behavior/analyze", methods=["POST"])
+    def api_coding_behavior_analyze():
+        """Run an on-demand behavioral intelligence analysis."""
+        analyzer = CodingBehaviorAnalyzer(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        report = analyzer.analyze(save=True)
+        from dataclasses import asdict
+        return jsonify(asdict(report)), 201
+
+    @app.route("/api/coding-behavior/report/<report_id>")
+    def api_coding_behavior_report(report_id: str):
+        """Retrieve a specific behavioral analysis report by report ID."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", report_id):
+            return jsonify({"error": "Invalid report_id format"}), 400
+
+        analyzer = CodingBehaviorAnalyzer(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        report = analyzer.get_report(report_id)
+        if not report:
+            return jsonify({"error": f"Behavior report '{report_id}' not found."}), 404
+
+        from dataclasses import asdict
+        return jsonify(asdict(report))
 
     return app
 

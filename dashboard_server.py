@@ -72,6 +72,18 @@ from intelligence.skill_gap import (
     SkillGapReport,
     SkillGapType,
 )
+from intelligence.learning_loop import (
+    AdaptiveLearningLoop,
+    LearningLoopAction,
+    LearningLoopChangeProposal,
+    LearningLoopEvidence,
+    LearningLoopPhase,
+    LearningLoopRecommendation,
+    LearningLoopReport,
+    LearningLoopSnapshot,
+    ProposalActionType,
+    ProposalStatus,
+)
 from intelligence.planner import SessionPlanner
 from intelligence.portfolio import (
     DEFAULT_PORTFOLIO_EXPORTS_DIR,
@@ -1920,6 +1932,94 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             <div style="background: rgba(30, 41, 59, 0.25); border: 1px dashed var(--border); border-radius: 6px; padding: 8px 12px; font-size: 0.75rem; color: var(--text-muted);">
                 <strong style="color: #94a3b8;">Disclaimer & Scope:</strong>
                 <span id="sgLimitationsText">Skill gaps are evaluated strictly from verified local executions and tracking history. Unpracticed topics represent lack of local evidence rather than poor ability. Recommendations are preview-only.</span>
+            </div>
+        </div>
+
+        <!-- Adaptive Learning Loop & Plan Reconciliation Panel (Milestone 6.3.25) -->
+        <div class="card" id="learningLoopCard" style="border-top: 3px solid #06b6d4;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <h2 style="margin: 0; font-size: 1.2rem; color: var(--text);">🔄 Adaptive Learning Loop & Plan Reconciliation</h2>
+                    <span id="llPhaseBadge" class="badge" style="background: rgba(6, 182, 212, 0.2); color: #67e8f9; font-size: 0.75rem;">DIAGNOSIS</span>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-primary btn-sm" onclick="runLearningLoopAnalysis()">⚡ Run Learning Cycle</button>
+                    <button class="btn btn-secondary btn-sm" onclick="reloadLearningLoop()">🔄 Refresh</button>
+                </div>
+            </div>
+
+            <!-- Quick Metrics Grid -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 16px;">
+                <div style="background: rgba(15, 23, 42, 0.5); padding: 10px; border-radius: 6px; border: 1px solid var(--border);">
+                    <span style="color: var(--text-muted); font-size: 0.75rem; display: block;">Cycle Phase</span>
+                    <strong id="llCurrentPhase" style="font-size: 1.1rem; color: #67e8f9;">re_evaluation</strong>
+                </div>
+                <div style="background: rgba(15, 23, 42, 0.5); padding: 10px; border-radius: 6px; border: 1px solid var(--border);">
+                    <span style="color: var(--text-muted); font-size: 0.75rem; display: block;">Active Plan</span>
+                    <strong id="llPlanStatus" style="font-size: 1.1rem; color: var(--text);">None</strong>
+                </div>
+                <div style="background: rgba(15, 23, 42, 0.5); padding: 10px; border-radius: 6px; border: 1px solid var(--border);">
+                    <span style="color: var(--text-muted); font-size: 0.75rem; display: block;">Pending Proposals</span>
+                    <strong id="llPendingProposalsCount" style="font-size: 1.1rem; color: #f59e0b;">0</strong>
+                </div>
+                <div style="background: rgba(15, 23, 42, 0.5); padding: 10px; border-radius: 6px; border: 1px solid var(--border);">
+                    <span style="color: var(--text-muted); font-size: 0.75rem; display: block;">Primary Focus</span>
+                    <strong id="llTopFocus" style="font-size: 1.1rem; color: var(--primary);">None</strong>
+                </div>
+            </div>
+
+            <!-- Next Recommended Action Banner -->
+            <div id="llNextActionBox" style="background: rgba(6, 182, 212, 0.1); border: 1px solid rgba(6, 182, 212, 0.3); border-radius: 6px; padding: 12px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                    <div>
+                        <span class="badge" style="background: rgba(6, 182, 212, 0.2); color: #67e8f9; font-size: 0.7rem; margin-bottom: 4px;">RECOMMENDED PRACTICE ACTION</span>
+                        <h4 id="llActionTitle" style="margin: 2px 0; color: var(--text); font-size: 0.95rem;">No immediate action needed</h4>
+                        <p id="llActionReason" style="margin: 0; color: var(--text-muted); font-size: 0.8rem;">All current learning tasks and skill gaps are reconciled.</p>
+                    </div>
+                    <button id="llActionLaunchBtn" class="btn btn-primary btn-sm" style="display: none;" onclick="launchLoopPracticeAction()">🚀 Start Practice Session</button>
+                </div>
+            </div>
+
+            <!-- Pending Plan Reconciliation Proposals Table -->
+            <div style="background: rgba(15, 23, 42, 0.3); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 16px;">
+                <h4 style="margin: 0 0 10px 0; font-size: 0.95rem; color: var(--text); display: flex; align-items: center; gap: 6px;">
+                    <span>📝</span> Plan Reconciliation Change Proposals (Explicit Approval Required)
+                </h4>
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid var(--border); color: var(--text-muted); text-align: left;">
+                                <th style="padding: 6px 8px;">Action Type</th>
+                                <th style="padding: 6px 8px;">Topic</th>
+                                <th style="padding: 6px 8px;">Proposed Change</th>
+                                <th style="padding: 6px 8px;">Target Diff</th>
+                                <th style="padding: 6px 8px;">Evidence & Rationale</th>
+                                <th style="padding: 6px 8px;">Decision</th>
+                            </tr>
+                        </thead>
+                        <tbody id="llProposalsBody">
+                            <tr>
+                                <td colspan="6" style="padding: 12px; text-align: center; color: var(--text-muted);">No pending plan proposals. Current preparation plan matches diagnosed skill gaps.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Snapshot Progression & Comparison Summary -->
+            <div style="background: rgba(15, 23, 42, 0.3); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 12px;">
+                <h4 style="margin: 0 0 6px 0; font-size: 0.9rem; color: var(--text); display: flex; align-items: center; gap: 6px;">
+                    <span>📊</span> Cycle-to-Cycle Snapshot Progression
+                </h4>
+                <p id="llComparisonText" style="margin: 0; font-size: 0.8rem; color: var(--text-muted);">
+                    Run a learning cycle to establish baseline comparison.
+                </p>
+            </div>
+
+            <!-- Limitations and Scope Disclaimer -->
+            <div style="background: rgba(30, 41, 59, 0.25); border: 1px dashed var(--border); border-radius: 6px; padding: 8px 12px; font-size: 0.75rem; color: var(--text-muted);">
+                <strong style="color: #94a3b8;">Disclaimer & Scope:</strong>
+                <span id="llLimitationsText">The Adaptive Learning Loop operates 100% offline. Plan modifications require explicit user approval. Completed tasks and historical data are permanently preserved.</span>
             </div>
         </div>
 
@@ -3980,6 +4080,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             reloadActivePracticeSession();
             reloadCodingBehavior();
             reloadSkillGaps();
+            reloadLearningLoop();
         });
 
         // =========================================================================
@@ -4874,6 +4975,168 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
             // Render Limitations / Disclaimer
             const limText = document.getElementById("sgLimitationsText");
+            if (limText && data.limitations && data.limitations.length > 0) {
+                limText.textContent = data.limitations.join(" • ");
+            }
+        }
+
+        // =========================================================================
+        // Milestone 6.3.25: Adaptive Learning Loop Client Functions
+        // =========================================================================
+
+        let currentLoopRecommendedAction = null;
+
+        async function reloadLearningLoop() {
+            try {
+                const res = await fetch("/api/learning-loop");
+                if (!res.ok) return;
+                const data = await res.json();
+                renderLearningLoop(data);
+            } catch (err) {
+                console.error("Failed to reload learning loop intelligence:", err);
+            }
+        }
+
+        async function runLearningLoopAnalysis() {
+            try {
+                const res = await fetch("/api/learning-loop/analyze", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({}),
+                });
+                if (res.ok) {
+                    showToast("Learning cycle evaluated & reconciled!", "success");
+                    await reloadLearningLoop();
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Loop analysis failed", "error");
+                }
+            } catch (err) {
+                showToast("Error running learning loop analysis", "error");
+            }
+        }
+
+        async function acceptLearningLoopProposal(proposalId) {
+            try {
+                const res = await fetch("/api/learning-loop/proposals/accept", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ proposal_id: proposalId, apply_to_plan: true }),
+                });
+                if (res.ok) {
+                    showToast("Proposal accepted and reconciled with plan!", "success");
+                    await reloadLearningLoop();
+                    reloadPreparationPlanner();
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Failed to accept proposal", "error");
+                }
+            } catch (err) {
+                showToast("Error accepting proposal", "error");
+            }
+        }
+
+        async function rejectLearningLoopProposal(proposalId) {
+            try {
+                const res = await fetch("/api/learning-loop/proposals/reject", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ proposal_id: proposalId }),
+                });
+                if (res.ok) {
+                    showToast("Proposal rejected.", "info");
+                    await reloadLearningLoop();
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Failed to reject proposal", "error");
+                }
+            } catch (err) {
+                showToast("Error rejecting proposal", "error");
+            }
+        }
+
+        function launchLoopPracticeAction() {
+            if (!currentLoopRecommendedAction) return;
+            const pid = currentLoopRecommendedAction.problem_id;
+            if (pid) {
+                openProblemInWorkspace(pid);
+                showToast(`Loaded recommended problem '${pid}' in Workspace!`, "success");
+            }
+        }
+
+        function renderLearningLoop(data) {
+            if (!data) return;
+
+            const badge = document.getElementById("llPhaseBadge");
+            if (badge) {
+                badge.textContent = (data.phase || "RE_EVALUATION").toUpperCase();
+            }
+
+            document.getElementById("llCurrentPhase").textContent = data.phase || "re_evaluation";
+            const topFocus = (data.highest_priority_focus && data.highest_priority_focus.length > 0)
+                ? data.highest_priority_focus[0]
+                : "None";
+            document.getElementById("llTopFocus").textContent = topFocus;
+
+            const pending = data.pending_proposals || [];
+            document.getElementById("llPendingProposalsCount").textContent = pending.length;
+
+            // Next recommended practice action
+            currentLoopRecommendedAction = data.next_recommended_action;
+            const launchBtn = document.getElementById("llActionLaunchBtn");
+            if (currentLoopRecommendedAction) {
+                document.getElementById("llActionTitle").textContent = `${currentLoopRecommendedAction.topic}: ${currentLoopRecommendedAction.problem_id || 'Problem Practice'} (${currentLoopRecommendedAction.difficulty})`;
+                document.getElementById("llActionReason").textContent = currentLoopRecommendedAction.reason || currentLoopRecommendedAction.learning_objective;
+                if (launchBtn) launchBtn.style.display = currentLoopRecommendedAction.problem_id ? "inline-block" : "none";
+            } else {
+                document.getElementById("llActionTitle").textContent = "No immediate practice action needed";
+                document.getElementById("llActionReason").textContent = "Active preparation plan and skill gaps are aligned.";
+                if (launchBtn) launchBtn.style.display = "none";
+            }
+
+            // Render Proposals Table
+            const tbody = document.getElementById("llProposalsBody");
+            if (tbody) {
+                if (pending.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="6" style="padding: 12px; text-align: center; color: var(--text-muted);">No pending plan proposals. Current preparation plan matches diagnosed skill gaps.</td></tr>`;
+                } else {
+                    tbody.innerHTML = pending.map(prop => {
+                        let actionBg = "rgba(59, 130, 246, 0.2)";
+                        let actionColor = "#93c5fd";
+                        if (prop.action_type === "add_task") { actionBg = "rgba(16, 185, 129, 0.2)"; actionColor = "#6ee7b7"; }
+                        else if (prop.action_type === "adjust_difficulty") { actionBg = "rgba(245, 158, 11, 0.2)"; actionColor = "#fcd34d"; }
+                        else if (prop.action_type === "revise_task") { actionBg = "rgba(139, 92, 246, 0.2)"; actionColor = "#c4b5fd"; }
+
+                        return `
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                <td style="padding: 6px 8px;"><span class="badge" style="background:${actionBg}; color:${actionColor}; font-size:0.7rem;">${prop.action_type.toUpperCase()}</span></td>
+                                <td style="padding: 6px 8px; font-weight: 600; color: var(--text);">${prop.topic || 'General'}</td>
+                                <td style="padding: 6px 8px; color: var(--text); font-size: 0.8rem;">${prop.title}</td>
+                                <td style="padding: 6px 8px; color: #cbd5e1;">${prop.target_difficulty}</td>
+                                <td style="padding: 6px 8px; color: var(--text-muted); font-size: 0.75rem;">${prop.rationale}</td>
+                                <td style="padding: 6px 8px; white-space: nowrap;">
+                                    <button class="btn btn-primary btn-sm" style="font-size: 0.7rem; padding: 2px 6px; margin-right: 4px;" onclick="acceptLearningLoopProposal('${prop.proposal_id}')">Accept</button>
+                                    <button class="btn btn-secondary btn-sm" style="font-size: 0.7rem; padding: 2px 6px;" onclick="rejectLearningLoopProposal('${prop.proposal_id}')">Reject</button>
+                                </td>
+                            </tr>
+                        `;
+                    }).join("");
+                }
+            }
+
+            // Render Comparison Summary
+            const compText = document.getElementById("llComparisonText");
+            if (compText) {
+                const comp = data.comparison;
+                if (comp && comp.summary) {
+                    compText.textContent = comp.summary;
+                } else {
+                    compText.textContent = "Baseline cycle recorded. Future cycles will compare progression automatically.";
+                }
+            }
+
+            // Render Limitations / Disclaimer
+            const limText = document.getElementById("llLimitationsText");
             if (limText && data.limitations && data.limitations.length > 0) {
                 limText.textContent = data.limitations.join(" • ");
             }
@@ -7326,6 +7589,189 @@ def create_app(
 
         from dataclasses import asdict
         return jsonify(asdict(report))
+
+    # =========================================================================
+    # Milestone 6.3.25: Adaptive Learning Loop & Plan Reconciliation Endpoints
+    # =========================================================================
+
+    @app.route("/api/learning-loop")
+    def api_learning_loop_overview():
+        """Retrieve overview summary of the adaptive learning loop."""
+        loop = AdaptiveLearningLoop(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        return jsonify(loop.get_overview())
+
+    @app.route("/api/learning-loop/latest")
+    def api_learning_loop_latest():
+        """Retrieve the latest learning loop report and snapshot."""
+        loop = AdaptiveLearningLoop(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        report = loop.get_latest_report()
+        from dataclasses import asdict
+        if not report:
+            report = loop.run_learning_cycle(save=False)
+        return jsonify(asdict(report))
+
+    @app.route("/api/learning-loop/history")
+    def api_learning_loop_history():
+        """Retrieve list of historical learning loop evaluations."""
+        try:
+            limit = int(request.args.get("limit", 10))
+        except ValueError:
+            limit = 10
+
+        loop = AdaptiveLearningLoop(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        return jsonify(loop.list_history(limit=limit))
+
+    @app.route("/api/learning-loop/analyze", methods=["POST"])
+    def api_learning_loop_analyze():
+        """Run an on-demand adaptive learning cycle and plan reconciliation."""
+        loop = AdaptiveLearningLoop(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        report = loop.run_learning_cycle(save=True)
+        from dataclasses import asdict
+        return jsonify(asdict(report)), 201
+
+    @app.route("/api/learning-loop/snapshot/<snapshot_id>")
+    def api_learning_loop_snapshot(snapshot_id: str):
+        """Retrieve a specific learning loop snapshot by ID."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", snapshot_id):
+            return jsonify({"error": "Invalid snapshot_id format"}), 400
+
+        loop = AdaptiveLearningLoop(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        snap = loop.get_snapshot(snapshot_id)
+        if not snap:
+            return jsonify({"error": f"Snapshot '{snapshot_id}' not found."}), 404
+
+        from dataclasses import asdict
+        return jsonify(asdict(snap))
+
+    @app.route("/api/learning-loop/compare")
+    def api_learning_loop_compare():
+        """Compare two learning loop snapshots (defaults to latest two)."""
+        s1_id = request.args.get("s1")
+        s2_id = request.args.get("s2")
+
+        if s1_id and not re.match(r"^[a-zA-Z0-9_\-]+$", s1_id):
+            return jsonify({"error": "Invalid s1 format"}), 400
+        if s2_id and not re.match(r"^[a-zA-Z0-9_\-]+$", s2_id):
+            return jsonify({"error": "Invalid s2 format"}), 400
+
+        loop = AdaptiveLearningLoop(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        s1 = loop.get_snapshot(s1_id) if s1_id else loop.get_latest_snapshot()
+        if not s1:
+            return jsonify({"error": "No snapshots available for comparison."}), 404
+
+        s2 = loop.get_snapshot(s2_id) if s2_id else None
+        if not s2:
+            # Try to fetch previous from history
+            history = loop.list_history(limit=2)
+            if len(history) >= 2:
+                s2 = loop.get_snapshot(history[1]["snapshot_id"])
+
+        comparison = loop.compare_snapshots(s1, s2)
+        return jsonify(comparison)
+
+    @app.route("/api/learning-loop/proposals")
+    def api_learning_loop_proposals():
+        """Retrieve list of plan change proposals."""
+        snapshot_id = request.args.get("snapshot_id")
+        status = request.args.get("status")
+        try:
+            limit = int(request.args.get("limit", 20))
+        except ValueError:
+            limit = 20
+
+        if snapshot_id and not re.match(r"^[a-zA-Z0-9_\-]+$", snapshot_id):
+            return jsonify({"error": "Invalid snapshot_id format"}), 400
+        if status and not re.match(r"^[a-zA-Z0-9_\-]+$", status):
+            return jsonify({"error": "Invalid status format"}), 400
+
+        loop = AdaptiveLearningLoop(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        proposals = loop.get_proposals(snapshot_id=snapshot_id, status=status, limit=limit)
+        from dataclasses import asdict
+        return jsonify([asdict(p) for p in proposals])
+
+    @app.route("/api/learning-loop/proposals/preview", methods=["POST"])
+    def api_learning_loop_proposals_preview():
+        """Preview impact of pending proposals without modifying the active plan."""
+        data = request.get_json(silent=True) or {}
+        snapshot_id = data.get("snapshot_id")
+
+        if snapshot_id and not re.match(r"^[a-zA-Z0-9_\-]+$", snapshot_id):
+            return jsonify({"error": "Invalid snapshot_id format"}), 400
+
+        loop = AdaptiveLearningLoop(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        pending = loop.get_proposals(snapshot_id=snapshot_id, status=ProposalStatus.PENDING.value)
+        from dataclasses import asdict
+        return jsonify({
+            "pending_proposals_count": len(pending),
+            "proposals": [asdict(p) for p in pending],
+            "impact_summary": f"Applying these {len(pending)} proposal(s) will align your active plan with verified skill gaps.",
+        })
+
+    @app.route("/api/learning-loop/proposals/accept", methods=["POST"])
+    def api_learning_loop_proposals_accept():
+        """Explicitly accept and apply a plan change proposal."""
+        data = request.get_json(silent=True) or {}
+        proposal_id = data.get("proposal_id")
+        apply_to_plan = bool(data.get("apply_to_plan", True))
+
+        if not proposal_id or not re.match(r"^[a-zA-Z0-9_\-]+$", proposal_id):
+            return jsonify({"error": "Invalid or missing proposal_id format"}), 400
+
+        loop = AdaptiveLearningLoop(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            prop = loop.accept_proposal(proposal_id=proposal_id, apply_to_plan=apply_to_plan)
+            from dataclasses import asdict
+            return jsonify(asdict(prop)), 200
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 404
+
+    @app.route("/api/learning-loop/proposals/reject", methods=["POST"])
+    def api_learning_loop_proposals_reject():
+        """Explicitly reject a plan change proposal."""
+        data = request.get_json(silent=True) or {}
+        proposal_id = data.get("proposal_id")
+        reason = data.get("reason", "")
+
+        if not proposal_id or not re.match(r"^[a-zA-Z0-9_\-]+$", proposal_id):
+            return jsonify({"error": "Invalid or missing proposal_id format"}), 400
+
+        loop = AdaptiveLearningLoop(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            prop = loop.reject_proposal(proposal_id=proposal_id, reason=reason)
+            from dataclasses import asdict
+            return jsonify(asdict(prop)), 200
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 404
 
     return app
 

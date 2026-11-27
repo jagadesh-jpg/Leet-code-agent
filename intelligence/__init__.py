@@ -161,6 +161,18 @@ from intelligence.skill_gap import (
     SkillGapReport,
     SkillGapType,
 )
+from intelligence.learning_loop import (
+    AdaptiveLearningLoop,
+    LearningLoopAction,
+    LearningLoopChangeProposal,
+    LearningLoopEvidence,
+    LearningLoopPhase,
+    LearningLoopRecommendation,
+    LearningLoopReport,
+    LearningLoopSnapshot,
+    ProposalActionType,
+    ProposalStatus,
+)
 from intelligence.preparation_planner import (
     IntensityLevel,
     PlanProgress,
@@ -314,4 +326,14 @@ __all__ = [
     "SkillGapConfidence",
     "SkillGapType",
     "PrioritizedFocusItem",
+    "AdaptiveLearningLoop",
+    "LearningLoopSnapshot",
+    "LearningLoopReport",
+    "LearningLoopRecommendation",
+    "LearningLoopAction",
+    "LearningLoopPhase",
+    "LearningLoopEvidence",
+    "LearningLoopChangeProposal",
+    "ProposalStatus",
+    "ProposalActionType",
 ]

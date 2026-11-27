@@ -62,6 +62,16 @@ from intelligence.coding_behavior import (
     CodingBehaviorProfile,
     InsightSeverity,
 )
+from intelligence.skill_gap import (
+    PrioritizedFocusItem,
+    SkillEvidence,
+    SkillGap,
+    SkillGapAnalyzer,
+    SkillGapConfidence,
+    SkillGapPriority,
+    SkillGapReport,
+    SkillGapType,
+)
 from intelligence.planner import SessionPlanner
 from intelligence.portfolio import (
     DEFAULT_PORTFOLIO_EXPORTS_DIR,
@@ -1819,6 +1829,97 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             <div style="background: rgba(30, 41, 59, 0.25); border: 1px dashed var(--border); border-radius: 6px; padding: 8px 12px; font-size: 0.75rem; color: var(--text-muted);">
                 <strong style="color: #94a3b8;">Disclaimer & Scope:</strong>
                 <span id="cbLimitationsText">Analysis is 100% offline and deterministic, derived purely from local test executions and session audit events. Strictly avoids psychological profiling, IQ evaluation, or external employment scoring.</span>
+            </div>
+        </div>
+
+        <!-- Personal Skill Gap & Focus Prioritization Panel (Milestone 6.3.24) -->
+        <div class="card" id="skillGapCard" style="border-top: 3px solid #ec4899;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <h2 style="margin: 0; font-size: 1.2rem; color: var(--text);">🎯 Personal Skill Gap & Focus Prioritization</h2>
+                    <span id="sgCoverageBadge" class="badge" style="background: rgba(236, 72, 153, 0.2); color: #f472b6; font-size: 0.75rem;">0% COVERAGE</span>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-primary btn-sm" onclick="runSkillGapAnalysis()">⚡ Analyze Now</button>
+                    <button class="btn btn-secondary btn-sm" onclick="reloadSkillGaps()">🔄 Refresh</button>
+                </div>
+            </div>
+
+            <!-- Quick Metrics Grid -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 16px;">
+                <div style="background: rgba(15, 23, 42, 0.5); padding: 10px; border-radius: 6px; border: 1px solid var(--border);">
+                    <span style="color: var(--text-muted); font-size: 0.75rem; display: block;">Evaluated Topics</span>
+                    <strong id="sgTotalTopics" style="font-size: 1.1rem; color: var(--text);">0</strong>
+                </div>
+                <div style="background: rgba(15, 23, 42, 0.5); padding: 10px; border-radius: 6px; border: 1px solid var(--border);">
+                    <span style="color: var(--text-muted); font-size: 0.75rem; display: block;">Practiced Coverage</span>
+                    <strong id="sgPracticedCoverage" style="font-size: 1.1rem; color: #f472b6;">0%</strong>
+                </div>
+                <div style="background: rgba(15, 23, 42, 0.5); padding: 10px; border-radius: 6px; border: 1px solid var(--border);">
+                    <span style="color: var(--text-muted); font-size: 0.75rem; display: block;">Critical (P0) Gaps</span>
+                    <strong id="sgCriticalGaps" style="font-size: 1.1rem; color: var(--warning);">0</strong>
+                </div>
+                <div style="background: rgba(15, 23, 42, 0.5); padding: 10px; border-radius: 6px; border: 1px solid var(--border);">
+                    <span style="color: var(--text-muted); font-size: 0.75rem; display: block;">Demonstrated Strengths</span>
+                    <strong id="sgStrengthsCount" style="font-size: 1.1rem; color: var(--success);">0</strong>
+                </div>
+            </div>
+
+            <!-- Prioritized Focus Queue Table -->
+            <div style="background: rgba(15, 23, 42, 0.3); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 16px;">
+                <h4 style="margin: 0 0 10px 0; font-size: 0.95rem; color: var(--text); display: flex; align-items: center; gap: 6px;">
+                    <span>📋</span> Prioritized Algorithmic Focus Queue
+                </h4>
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid var(--border); color: var(--text-muted); text-align: left;">
+                                <th style="padding: 6px 8px;">Rank</th>
+                                <th style="padding: 6px 8px;">Priority</th>
+                                <th style="padding: 6px 8px;">Topic</th>
+                                <th style="padding: 6px 8px;">Category</th>
+                                <th style="padding: 6px 8px;">Score</th>
+                                <th style="padding: 6px 8px;">Difficulty</th>
+                                <th style="padding: 6px 8px;">Suggested Action</th>
+                                <th style="padding: 6px 8px;">Evidence & Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sgFocusQueueBody">
+                            <tr>
+                                <td colspan="8" style="padding: 12px; text-align: center; color: var(--text-muted);">No focus queue generated yet. Click 'Analyze Now' to compute skill gaps.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Two Columns: Strengths & Insufficient Evidence -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-bottom: 16px;">
+                <!-- Demonstrated Strengths -->
+                <div style="background: rgba(15, 23, 42, 0.3); border: 1px solid var(--border); border-radius: 6px; padding: 12px;">
+                    <h4 style="margin: 0 0 8px 0; font-size: 0.9rem; color: var(--text); display: flex; align-items: center; gap: 6px;">
+                        <span>🌟</span> Demonstrated Strengths
+                    </h4>
+                    <div id="sgStrengthsList" style="font-size: 0.8rem; color: var(--text-muted);">
+                        No confirmed strengths identified yet (requires >= 2 solves and >= 80% success rate).
+                    </div>
+                </div>
+
+                <!-- Insufficient Evidence / Under-practiced -->
+                <div style="background: rgba(15, 23, 42, 0.3); border: 1px solid var(--border); border-radius: 6px; padding: 12px;">
+                    <h4 style="margin: 0 0 8px 0; font-size: 0.9rem; color: var(--text); display: flex; align-items: center; gap: 6px;">
+                        <span>⏳</span> Insufficient Practice Topics
+                    </h4>
+                    <div id="sgInsufficientList" style="font-size: 0.8rem; color: var(--text-muted);">
+                        All evaluated topics currently have practice evidence.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Limitations and Scope Disclaimer -->
+            <div style="background: rgba(30, 41, 59, 0.25); border: 1px dashed var(--border); border-radius: 6px; padding: 8px 12px; font-size: 0.75rem; color: var(--text-muted);">
+                <strong style="color: #94a3b8;">Disclaimer & Scope:</strong>
+                <span id="sgLimitationsText">Skill gaps are evaluated strictly from verified local executions and tracking history. Unpracticed topics represent lack of local evidence rather than poor ability. Recommendations are preview-only.</span>
             </div>
         </div>
 
@@ -3878,6 +3979,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             reloadPreparationPlanner();
             reloadActivePracticeSession();
             reloadCodingBehavior();
+            reloadSkillGaps();
         });
 
         // =========================================================================
@@ -4651,6 +4753,127 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
             // Render Limitations / Disclaimer
             const limText = document.getElementById("cbLimitationsText");
+            if (limText && data.limitations && data.limitations.length > 0) {
+                limText.textContent = data.limitations.join(" • ");
+            }
+        }
+
+        // =========================================================================
+        // Milestone 6.3.24: Personal Skill Gap & Focus Prioritization Client Functions
+        // =========================================================================
+
+        async function reloadSkillGaps() {
+            try {
+                const res = await fetch("/api/skill-gaps");
+                if (!res.ok) return;
+                const data = await res.json();
+                renderSkillGaps(data);
+            } catch (err) {
+                console.error("Failed to reload skill gap intelligence:", err);
+            }
+        }
+
+        async function runSkillGapAnalysis() {
+            try {
+                const res = await fetch("/api/skill-gaps/analyze", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({}),
+                });
+                if (res.ok) {
+                    showToast("Skill gap prioritization analysis complete!", "success");
+                    await reloadSkillGaps();
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Analysis failed", "error");
+                }
+            } catch (err) {
+                showToast("Error running skill gap analysis", "error");
+            }
+        }
+
+        function renderSkillGaps(data) {
+            if (!data) return;
+
+            const cov = data.coverage_summary || {};
+            const covPct = cov.coverage_percentage ?? 0;
+            const badge = document.getElementById("sgCoverageBadge");
+            if (badge) {
+                badge.textContent = `${covPct}% COVERAGE`;
+                badge.style.background = covPct > 50 ? "rgba(16, 185, 129, 0.2)" : "rgba(236, 72, 153, 0.2)";
+                badge.style.color = covPct > 50 ? "#6ee7b7" : "#f472b6";
+            }
+
+            document.getElementById("sgTotalTopics").textContent = cov.total_topics || 0;
+            document.getElementById("sgPracticedCoverage").textContent = `${covPct}%`;
+            document.getElementById("sgCriticalGaps").textContent = cov.critical_gap_count || 0;
+            document.getElementById("sgStrengthsCount").textContent = cov.strengths_count || 0;
+
+            // Render Focus Queue Table
+            const tbody = document.getElementById("sgFocusQueueBody");
+            if (tbody) {
+                const queue = data.focus_queue || [];
+                if (queue.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="8" style="padding: 12px; text-align: center; color: var(--text-muted);">No focus queue items available. Click 'Analyze Now'.</td></tr>`;
+                } else {
+                    tbody.innerHTML = queue.map(item => {
+                        let prioColor = "#93c5fd";
+                        let prioBg = "rgba(59, 130, 246, 0.2)";
+                        if (item.priority_tier === "P0") { prioColor = "#ef4444"; prioBg = "rgba(239, 68, 68, 0.2)"; }
+                        else if (item.priority_tier === "P1") { prioColor = "#f59e0b"; prioBg = "rgba(245, 158, 11, 0.2)"; }
+                        else if (item.priority_tier === "P2") { prioColor = "#38bdf8"; prioBg = "rgba(56, 189, 248, 0.2)"; }
+
+                        const catLabel = (item.gap_type || '').replace(/_/g, ' ').toUpperCase();
+                        return `
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                <td style="padding: 6px 8px; color: var(--text-muted); font-weight: bold;">#${item.rank}</td>
+                                <td style="padding: 6px 8px;"><span class="badge" style="background:${prioBg}; color:${prioColor}; font-size:0.7rem;">${item.priority_tier}</span></td>
+                                <td style="padding: 6px 8px; color: var(--text); font-weight: 600;">${item.topic}</td>
+                                <td style="padding: 6px 8px;"><span style="font-size: 0.7rem; color: #94a3b8;">${catLabel}</span></td>
+                                <td style="padding: 6px 8px; color: var(--text); font-weight: 500;">${item.priority_score}</td>
+                                <td style="padding: 6px 8px; color: #cbd5e1;">${item.suggested_difficulty}</td>
+                                <td style="padding: 6px 8px; color: #38bdf8; font-size: 0.75rem;">${item.suggested_action}</td>
+                                <td style="padding: 6px 8px; color: var(--text-muted); font-size: 0.75rem;">${item.reason}</td>
+                            </tr>
+                        `;
+                    }).join("");
+                }
+            }
+
+            // Render Strengths
+            const strList = document.getElementById("sgStrengthsList");
+            if (strList) {
+                const strengths = data.strengths || [];
+                if (strengths.length === 0) {
+                    strList.innerHTML = "<p style='margin:0; color:var(--text-muted);'>No confirmed strengths yet (requires >= 2 solves and >= 80% success rate).</p>";
+                } else {
+                    strList.innerHTML = strengths.map(s => `
+                        <div style="margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center;">
+                            <strong style="color: var(--success);">${s.topic}</strong>
+                            <span style="font-size: 0.75rem; color: #94a3b8;">${s.evidence.solved_problems_count} solved • ${s.evidence.success_rate}% success</span>
+                        </div>
+                    `).join("");
+                }
+            }
+
+            // Render Insufficient Practice Topics
+            const insList = document.getElementById("sgInsufficientList");
+            if (insList) {
+                const unpracticed = data.insufficient_evidence_topics || [];
+                if (unpracticed.length === 0) {
+                    insList.innerHTML = "<p style='margin:0; color:var(--text-muted);'>All evaluated topics currently have practice evidence.</p>";
+                } else {
+                    insList.innerHTML = unpracticed.map(u => `
+                        <div style="margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center;">
+                            <strong style="color: var(--text);">${u.topic}</strong>
+                            <span style="font-size: 0.75rem; color: #94a3b8;">0 solves • ${u.evidence.total_problems_available} in library</span>
+                        </div>
+                    `).join("");
+                }
+            }
+
+            // Render Limitations / Disclaimer
+            const limText = document.getElementById("sgLimitationsText");
             if (limText && data.limitations && data.limitations.length > 0) {
                 limText.textContent = data.limitations.join(" • ");
             }
@@ -7016,6 +7239,90 @@ def create_app(
         report = analyzer.get_report(report_id)
         if not report:
             return jsonify({"error": f"Behavior report '{report_id}' not found."}), 404
+
+        from dataclasses import asdict
+        return jsonify(asdict(report))
+
+    # =========================================================================
+    # Milestone 6.3.24: Personal Skill Gap & Focus Prioritization REST Endpoints
+    # =========================================================================
+
+    @app.route("/api/skill-gaps")
+    def api_skill_gaps_overview():
+        """Retrieve overview summary of personal skill gaps and focus priorities."""
+        analyzer = SkillGapAnalyzer(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        return jsonify(analyzer.get_overview())
+
+    @app.route("/api/skill-gaps/report")
+    def api_skill_gaps_report_latest():
+        """Retrieve the latest skill gap report."""
+        analyzer = SkillGapAnalyzer(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        report = analyzer.get_latest_report()
+        from dataclasses import asdict
+        if not report:
+            report = analyzer.analyze(save=False)
+        return jsonify(asdict(report))
+
+    @app.route("/api/skill-gaps/queue")
+    def api_skill_gaps_queue():
+        """Retrieve prioritized algorithmic focus queue."""
+        try:
+            limit = int(request.args.get("limit", 20))
+        except ValueError:
+            limit = 20
+
+        analyzer = SkillGapAnalyzer(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        queue = analyzer.get_focus_queue(limit=limit)
+        from dataclasses import asdict
+        return jsonify([asdict(item) for item in queue])
+
+    @app.route("/api/skill-gaps/history")
+    def api_skill_gaps_history():
+        """Retrieve list of historical skill gap reports."""
+        try:
+            limit = int(request.args.get("limit", 10))
+        except ValueError:
+            limit = 10
+
+        analyzer = SkillGapAnalyzer(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        return jsonify(analyzer.list_reports(limit=limit))
+
+    @app.route("/api/skill-gaps/analyze", methods=["POST"])
+    def api_skill_gaps_analyze():
+        """Run an on-demand personal skill gap and focus prioritization analysis."""
+        analyzer = SkillGapAnalyzer(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        report = analyzer.analyze(save=True)
+        from dataclasses import asdict
+        return jsonify(asdict(report)), 201
+
+    @app.route("/api/skill-gaps/report/<report_id>")
+    def api_skill_gaps_report_by_id(report_id: str):
+        """Retrieve a specific skill gap report by its report ID."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", report_id):
+            return jsonify({"error": "Invalid report_id format"}), 400
+
+        analyzer = SkillGapAnalyzer(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        report = analyzer.get_report(report_id)
+        if not report:
+            return jsonify({"error": f"Skill gap report '{report_id}' not found."}), 404
 
         from dataclasses import asdict
         return jsonify(asdict(report))

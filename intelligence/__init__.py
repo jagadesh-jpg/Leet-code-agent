@@ -151,6 +151,16 @@ from intelligence.coding_behavior import (
     CodingBehaviorProfile,
     InsightSeverity,
 )
+from intelligence.skill_gap import (
+    PrioritizedFocusItem,
+    SkillEvidence,
+    SkillGap,
+    SkillGapAnalyzer,
+    SkillGapConfidence,
+    SkillGapPriority,
+    SkillGapReport,
+    SkillGapType,
+)
 from intelligence.preparation_planner import (
     IntensityLevel,
     PlanProgress,
@@ -296,4 +306,12 @@ __all__ = [
     "InsightSeverity",
     "BehaviorEvidence",
     "BehaviorAnalysisReport",
+    "SkillGapAnalyzer",
+    "SkillGap",
+    "SkillGapReport",
+    "SkillEvidence",
+    "SkillGapPriority",
+    "SkillGapConfidence",
+    "SkillGapType",
+    "PrioritizedFocusItem",
 ]

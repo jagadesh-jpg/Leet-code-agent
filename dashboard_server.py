@@ -84,6 +84,18 @@ from intelligence.learning_loop import (
     ProposalActionType,
     ProposalStatus,
 )
+from intelligence.daily_practice import (
+    DailyPracticeEvidence,
+    DailyPracticeOrchestrator,
+    DailyPracticeProgress,
+    DailyPracticeReport,
+    DailyPracticeSchedule,
+    DailyPracticeSession,
+    DailyPracticeSessionStatus,
+    DailyPracticeTask,
+    DailyPracticeTaskStatus,
+    DailyPracticeTaskType,
+)
 from intelligence.planner import SessionPlanner
 from intelligence.portfolio import (
     DEFAULT_PORTFOLIO_EXPORTS_DIR,
@@ -2020,6 +2032,91 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             <div style="background: rgba(30, 41, 59, 0.25); border: 1px dashed var(--border); border-radius: 6px; padding: 8px 12px; font-size: 0.75rem; color: var(--text-muted);">
                 <strong style="color: #94a3b8;">Disclaimer & Scope:</strong>
                 <span id="llLimitationsText">The Adaptive Learning Loop operates 100% offline. Plan modifications require explicit user approval. Completed tasks and historical data are permanently preserved.</span>
+            </div>
+        </div>
+
+        <!-- Guided Daily Practice & Study Session Orchestrator Panel (Milestone 6.3.26) -->
+        <div class="card" id="dailyPracticeCard" style="border-top: 3px solid #10b981;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <h2 style="margin: 0; font-size: 1.2rem; color: var(--text);">📅 Guided Daily Practice & Study Session</h2>
+                    <span id="dpStatusBadge" class="badge" style="background: rgba(16, 185, 129, 0.2); color: #6ee7b7; font-size: 0.75rem;">NO SESSION</span>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <label style="font-size: 0.8rem; color: var(--text-muted); margin-right: -4px;">Budget:</label>
+                    <select id="dpBudgetSelect" onchange="onDpBudgetChange()" style="background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 0.8rem;">
+                        <option value="15">15 min (Sprint)</option>
+                        <option value="30">30 min (Quick)</option>
+                        <option value="45" selected>45 min (Standard)</option>
+                        <option value="60">60 min (Deep)</option>
+                        <option value="90">90 min (Extended)</option>
+                        <option value="custom">Custom...</option>
+                    </select>
+                    <input type="number" id="dpCustomMinutes" placeholder="min" min="15" max="360" style="display: none; width: 60px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; font-size: 0.8rem;" />
+                    <button class="btn btn-primary btn-sm" onclick="generateDailyPracticeSession()">⚡ Generate Today's Session</button>
+                    <button class="btn btn-secondary btn-sm" onclick="reloadDailyPractice()">🔄 Refresh</button>
+                </div>
+            </div>
+
+            <!-- Overview Metrics Grid -->
+            <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 12px;">
+                <div class="metric-card" style="padding: 10px;">
+                    <div class="metric-label" style="font-size: 0.75rem;">Active / Latest Session</div>
+                    <div id="dpSessionTitle" style="font-weight: 600; font-size: 0.85rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">No session generated</div>
+                </div>
+                <div class="metric-card" style="padding: 10px;">
+                    <div class="metric-label" style="font-size: 0.75rem;">Budget vs Elapsed</div>
+                    <div id="dpTimeDisplay" style="font-weight: 700; font-size: 1rem; color: #6ee7b7;">0 / 45m</div>
+                </div>
+                <div class="metric-card" style="padding: 10px;">
+                    <div class="metric-label" style="font-size: 0.75rem;">Progress</div>
+                    <div id="dpProgressDisplay" style="font-weight: 700; font-size: 1rem; color: var(--primary);">0% (0/0)</div>
+                </div>
+                <div class="metric-card" style="padding: 10px;">
+                    <div class="metric-label" style="font-size: 0.75rem;">Verified Passes</div>
+                    <div id="dpVerifiedDisplay" style="font-weight: 700; font-size: 1rem; color: #10b981;">0</div>
+                </div>
+            </div>
+
+            <!-- Session Controls Bar -->
+            <div id="dpSessionControlsBar" style="background: rgba(15, 23, 42, 0.4); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div style="font-size: 0.8rem; color: var(--text-muted);">
+                    <span id="dpCurrentTaskLabel">Current focus: <strong>None</strong></span>
+                </div>
+                <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                    <button id="dpStartBtn" class="btn btn-primary btn-sm" style="display: none;" onclick="startDailyPracticeSession()">▶️ Start Session</button>
+                    <button id="dpPauseBtn" class="btn btn-secondary btn-sm" style="display: none;" onclick="pauseDailyPracticeSession()">⏸️ Pause</button>
+                    <button id="dpResumeBtn" class="btn btn-primary btn-sm" style="display: none;" onclick="resumeDailyPracticeSession()">▶️ Resume</button>
+                    <button id="dpCompleteBtn" class="btn btn-sm" style="display: none; background: #059669; color: white;" onclick="completeDailyPracticeSession()">✅ Complete</button>
+                    <button id="dpAbandonBtn" class="btn btn-secondary btn-sm" style="display: none; color: #f87171;" onclick="abandonDailyPracticeSession()">⏹️ Abandon</button>
+                    <button id="dpReevaluateBtn" class="btn btn-secondary btn-sm" style="display: none;" onclick="reevaluateDailyPracticeLoop()">🔄 Re-evaluate Loop</button>
+                </div>
+            </div>
+
+            <!-- Task List Table -->
+            <div style="overflow-x: auto; margin-bottom: 12px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--border); text-align: left; color: var(--text-muted);">
+                            <th style="padding: 6px 8px; width: 30px;">#</th>
+                            <th style="padding: 6px 8px; width: 110px;">Type</th>
+                            <th style="padding: 6px 8px;">Task / Problem</th>
+                            <th style="padding: 6px 8px; width: 80px;">Target</th>
+                            <th style="padding: 6px 8px; width: 80px;">Actual</th>
+                            <th style="padding: 6px 8px; width: 90px;">Status</th>
+                            <th style="padding: 6px 8px; width: 150px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dpTasksTableBody">
+                        <tr><td colspan="7" style="padding: 12px; text-align: center; color: var(--text-muted);">No study session active. Click "Generate Today's Session" to schedule tasks based on learning evidence.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Disclaimer & Scope -->
+            <div style="background: rgba(30, 41, 59, 0.25); border: 1px dashed var(--border); border-radius: 6px; padding: 8px 12px; font-size: 0.75rem; color: var(--text-muted);">
+                <strong style="color: #94a3b8;">Disclaimer & Verification:</strong>
+                <span>Tasks are orchestrated offline from real learning evidence (preparation plan, spaced revision, skill gaps, unresolved attempts). Verified passes require local test run evidence. Progress database is strictly read-only.</span>
             </div>
         </div>
 
@@ -4081,6 +4178,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             reloadCodingBehavior();
             reloadSkillGaps();
             reloadLearningLoop();
+            reloadDailyPractice();
         });
 
         // =========================================================================
@@ -5139,6 +5237,413 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             const limText = document.getElementById("llLimitationsText");
             if (limText && data.limitations && data.limitations.length > 0) {
                 limText.textContent = data.limitations.join(" • ");
+            }
+        }
+
+        // =========================================================================
+        // Milestone 6.3.26: Guided Daily Practice & Study Session Client Functions
+        // =========================================================================
+
+        let currentDailyPracticeSession = null;
+
+        function onDpBudgetChange() {
+            const select = document.getElementById("dpBudgetSelect");
+            const customInput = document.getElementById("dpCustomMinutes");
+            if (select && customInput) {
+                customInput.style.display = select.value === "custom" ? "inline-block" : "none";
+            }
+        }
+
+        async function reloadDailyPractice() {
+            try {
+                const res = await fetch("/api/daily-practice");
+                if (!res.ok) return;
+                const data = await res.json();
+                renderDailyPractice(data);
+            } catch (err) {
+                console.error("Failed to load daily practice overview:", err);
+            }
+        }
+
+        async function generateDailyPracticeSession() {
+            const select = document.getElementById("dpBudgetSelect");
+            const customInput = document.getElementById("dpCustomMinutes");
+            let budget = 45;
+            if (select) {
+                if (select.value === "custom" && customInput && customInput.value) {
+                    budget = parseInt(customInput.value, 10);
+                } else {
+                    budget = parseInt(select.value, 10);
+                }
+            }
+            if (isNaN(budget) || budget < 15 || budget > 360) {
+                showToast("Budget must be between 15 and 360 minutes", "error");
+                return;
+            }
+
+            try {
+                const res = await fetch("/api/daily-practice/generate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ budget_minutes: budget }),
+                });
+                if (res.ok) {
+                    showToast("New daily study session generated!", "success");
+                    await reloadDailyPractice();
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Failed to generate session", "error");
+                }
+            } catch (err) {
+                console.error("Generate daily practice error:", err);
+                showToast("Failed to generate session", "error");
+            }
+        }
+
+        async function startDailyPracticeSession() {
+            if (!currentDailyPracticeSession) return;
+            try {
+                const res = await fetch("/api/daily-practice/start", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ session_id: currentDailyPracticeSession.session_id }),
+                });
+                if (res.ok) {
+                    showToast("Study session started!", "success");
+                    await reloadDailyPractice();
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Failed to start session", "error");
+                }
+            } catch (err) {
+                showToast("Failed to start session", "error");
+            }
+        }
+
+        async function startDailyPracticeTask(taskId) {
+            if (!currentDailyPracticeSession) return;
+            try {
+                const res = await fetch("/api/daily-practice/task/start", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ session_id: currentDailyPracticeSession.session_id, task_id: taskId }),
+                });
+                if (res.ok) {
+                    showToast("Task started!", "info");
+                    await reloadDailyPractice();
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Failed to start task", "error");
+                }
+            } catch (err) {
+                showToast("Failed to start task", "error");
+            }
+        }
+
+        async function completeDailyPracticeTask(taskId) {
+            if (!currentDailyPracticeSession) return;
+            try {
+                const res = await fetch("/api/daily-practice/task/complete", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        session_id: currentDailyPracticeSession.session_id,
+                        task_id: taskId,
+                        verified_pass: true,
+                        notes: "Completed via dashboard",
+                    }),
+                });
+                if (res.ok) {
+                    showToast("Task completed!", "success");
+                    await reloadDailyPractice();
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Failed to complete task", "error");
+                }
+            } catch (err) {
+                showToast("Failed to complete task", "error");
+            }
+        }
+
+        async function skipDailyPracticeTask(taskId) {
+            if (!currentDailyPracticeSession) return;
+            try {
+                const res = await fetch("/api/daily-practice/task/skip", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        session_id: currentDailyPracticeSession.session_id,
+                        task_id: taskId,
+                        reason: "Skipped via dashboard",
+                    }),
+                });
+                if (res.ok) {
+                    showToast("Task skipped", "info");
+                    await reloadDailyPractice();
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Failed to skip task", "error");
+                }
+            } catch (err) {
+                showToast("Failed to skip task", "error");
+            }
+        }
+
+        async function pauseDailyPracticeSession() {
+            if (!currentDailyPracticeSession) return;
+            try {
+                const res = await fetch("/api/daily-practice/pause", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ session_id: currentDailyPracticeSession.session_id, reason: "Paused via dashboard" }),
+                });
+                if (res.ok) {
+                    showToast("Session paused", "info");
+                    await reloadDailyPractice();
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Failed to pause session", "error");
+                }
+            } catch (err) {
+                showToast("Failed to pause session", "error");
+            }
+        }
+
+        async function resumeDailyPracticeSession() {
+            if (!currentDailyPracticeSession) return;
+            try {
+                const res = await fetch("/api/daily-practice/resume", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ session_id: currentDailyPracticeSession.session_id }),
+                });
+                if (res.ok) {
+                    showToast("Session resumed!", "success");
+                    await reloadDailyPractice();
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Failed to resume session", "error");
+                }
+            } catch (err) {
+                showToast("Failed to resume session", "error");
+            }
+        }
+
+        async function abandonDailyPracticeSession() {
+            if (!currentDailyPracticeSession) return;
+            if (!confirm("Are you sure you want to abandon this practice session?")) return;
+            try {
+                const res = await fetch("/api/daily-practice/abandon", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ session_id: currentDailyPracticeSession.session_id, reason: "Abandoned by user" }),
+                });
+                if (res.ok) {
+                    showToast("Session abandoned", "info");
+                    await reloadDailyPractice();
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Failed to abandon session", "error");
+                }
+            } catch (err) {
+                showToast("Failed to abandon session", "error");
+            }
+        }
+
+        async function completeDailyPracticeSession() {
+            if (!currentDailyPracticeSession) return;
+            try {
+                const res = await fetch("/api/daily-practice/complete", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ session_id: currentDailyPracticeSession.session_id, notes: "Completed via dashboard" }),
+                });
+                if (res.ok) {
+                    showToast("Session completed! Report generated.", "success");
+                    await reloadDailyPractice();
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Failed to complete session", "error");
+                }
+            } catch (err) {
+                showToast("Failed to complete session", "error");
+            }
+        }
+
+        async function reevaluateDailyPracticeLoop() {
+            if (!currentDailyPracticeSession) return;
+            try {
+                const res = await fetch("/api/daily-practice/re-evaluate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ session_id: currentDailyPracticeSession.session_id }),
+                });
+                if (res.ok) {
+                    showToast("Session evidence fed back to Learning Loop!", "success");
+                    await reloadDailyPractice();
+                    reloadLearningLoop();
+                } else {
+                    const err = await res.json();
+                    showToast(err.error || "Failed to re-evaluate learning loop", "error");
+                }
+            } catch (err) {
+                showToast("Failed to re-evaluate learning loop", "error");
+            }
+        }
+
+        function renderDailyPractice(data) {
+            const session = data.active_session || data.latest_session;
+            currentDailyPracticeSession = session;
+
+            const badge = document.getElementById("dpStatusBadge");
+            const titleEl = document.getElementById("dpSessionTitle");
+            const timeEl = document.getElementById("dpTimeDisplay");
+            const progressEl = document.getElementById("dpProgressDisplay");
+            const verifiedEl = document.getElementById("dpVerifiedDisplay");
+            const currentTaskEl = document.getElementById("dpCurrentTaskLabel");
+
+            const startBtn = document.getElementById("dpStartBtn");
+            const pauseBtn = document.getElementById("dpPauseBtn");
+            const resumeBtn = document.getElementById("dpResumeBtn");
+            const completeBtn = document.getElementById("dpCompleteBtn");
+            const abandonBtn = document.getElementById("dpAbandonBtn");
+            const reevaluateBtn = document.getElementById("dpReevaluateBtn");
+
+            // Hide all action buttons by default
+            [startBtn, pauseBtn, resumeBtn, completeBtn, abandonBtn, reevaluateBtn].forEach(b => {
+                if (b) b.style.display = "none";
+            });
+
+            if (!session) {
+                if (badge) {
+                    badge.textContent = "NO SESSION";
+                    badge.style.background = "rgba(100, 116, 139, 0.2)";
+                    badge.style.color = "#94a3b8";
+                }
+                if (titleEl) titleEl.textContent = "No session generated";
+                if (timeEl) timeEl.textContent = `0 / ${data.default_budget_minutes || 45}m`;
+                if (progressEl) progressEl.textContent = "0% (0/0)";
+                if (verifiedEl) verifiedEl.textContent = "0";
+                if (currentTaskEl) currentTaskEl.innerHTML = "Current focus: <strong>None</strong>";
+                const tbody = document.getElementById("dpTasksTableBody");
+                if (tbody) {
+                    tbody.innerHTML = `<tr><td colspan="7" style="padding: 12px; text-align: center; color: var(--text-muted);">No study session active. Click "Generate Today's Session" to schedule tasks based on learning evidence.</td></tr>`;
+                }
+                return;
+            }
+
+            const status = (session.status || "ready").toUpperCase();
+            if (badge) {
+                badge.textContent = status;
+                if (status === "ACTIVE") {
+                    badge.style.background = "rgba(16, 185, 129, 0.2)";
+                    badge.style.color = "#6ee7b7";
+                } else if (status === "PAUSED") {
+                    badge.style.background = "rgba(245, 158, 11, 0.2)";
+                    badge.style.color = "#fcd34d";
+                } else if (status === "COMPLETED") {
+                    badge.style.background = "rgba(59, 130, 246, 0.2)";
+                    badge.style.color = "#93c5fd";
+                } else if (status === "ABANDONED") {
+                    badge.style.background = "rgba(239, 68, 68, 0.2)";
+                    badge.style.color = "#fca5a5";
+                } else {
+                    badge.style.background = "rgba(147, 51, 234, 0.2)";
+                    badge.style.color = "#d8b4fe";
+                }
+            }
+
+            if (titleEl) titleEl.textContent = session.title || "Daily Study Session";
+            const elapsedMins = Math.round((session.elapsed_seconds || 0) / 60);
+            if (timeEl) timeEl.textContent = `${elapsedMins} / ${session.budget_minutes}m`;
+
+            const prog = session.progress || {};
+            const pct = prog.completion_percentage || 0;
+            const completedCount = prog.completed_tasks || 0;
+            const totalCount = prog.total_tasks || (session.tasks ? session.tasks.length : 0);
+            if (progressEl) progressEl.textContent = `${Math.round(pct)}% (${completedCount}/${totalCount})`;
+
+            const verifiedCount = prog.verified_passes || 0;
+            if (verifiedEl) verifiedEl.textContent = `${verifiedCount}`;
+
+            // Button visibility based on status
+            if (status === "READY") {
+                if (startBtn) startBtn.style.display = "inline-block";
+                if (abandonBtn) abandonBtn.style.display = "inline-block";
+            } else if (status === "ACTIVE") {
+                if (pauseBtn) pauseBtn.style.display = "inline-block";
+                if (completeBtn) completeBtn.style.display = "inline-block";
+                if (abandonBtn) abandonBtn.style.display = "inline-block";
+            } else if (status === "PAUSED") {
+                if (resumeBtn) resumeBtn.style.display = "inline-block";
+                if (completeBtn) completeBtn.style.display = "inline-block";
+                if (abandonBtn) abandonBtn.style.display = "inline-block";
+            } else if (status === "COMPLETED") {
+                if (reevaluateBtn) reevaluateBtn.style.display = "inline-block";
+            }
+
+            // Current task focus label
+            const activeTask = (session.tasks || []).find(t => t.status === "in_progress")
+                || (session.tasks || []).find(t => t.status === "pending");
+            if (currentTaskEl) {
+                if (activeTask) {
+                    currentTaskEl.innerHTML = `Current focus: <strong>${activeTask.title}</strong> (${activeTask.target_duration_minutes}m • ${activeTask.topic || 'General'})`;
+                } else {
+                    currentTaskEl.innerHTML = `Current focus: <strong>Session Finished</strong>`;
+                }
+            }
+
+            // Render tasks table
+            const tbody = document.getElementById("dpTasksTableBody");
+            if (tbody && session.tasks) {
+                tbody.innerHTML = session.tasks.map(t => {
+                    let typeBg = "rgba(59, 130, 246, 0.2)";
+                    let typeColor = "#93c5fd";
+                    if (t.task_type === "unresolved_review") { typeBg = "rgba(239, 68, 68, 0.2)"; typeColor = "#fca5a5"; }
+                    else if (t.task_type === "spaced_revision") { typeBg = "rgba(245, 158, 11, 0.2)"; typeColor = "#fcd34d"; }
+                    else if (t.task_type === "skill_gap_drill") { typeBg = "rgba(168, 85, 247, 0.2)"; typeColor = "#d8b4fe"; }
+                    else if (t.task_type === "break_checkpoint") { typeBg = "rgba(100, 116, 139, 0.2)"; typeColor = "#94a3b8"; }
+                    else if (t.task_type === "session_reflection") { typeBg = "rgba(16, 185, 129, 0.2)"; typeColor = "#6ee7b7"; }
+
+                    let statusBg = "rgba(100, 116, 139, 0.2)";
+                    let statusColor = "#94a3b8";
+                    if (t.status === "completed") { statusBg = "rgba(16, 185, 129, 0.2)"; statusColor = "#6ee7b7"; }
+                    else if (t.status === "in_progress") { statusBg = "rgba(6, 182, 212, 0.2)"; statusColor = "#67e8f9"; }
+                    else if (t.status === "skipped") { statusBg = "rgba(245, 158, 11, 0.2)"; statusColor = "#fcd34d"; }
+
+                    let actionsHtml = "";
+                    if (status === "ACTIVE" || status === "READY") {
+                        if (t.status === "pending") {
+                            actionsHtml += `<button class="btn btn-primary btn-sm" style="font-size: 0.7rem; padding: 2px 6px; margin-right: 4px;" onclick="startDailyPracticeTask('${t.task_id}')">Start</button>`;
+                            actionsHtml += `<button class="btn btn-secondary btn-sm" style="font-size: 0.7rem; padding: 2px 6px;" onclick="skipDailyPracticeTask('${t.task_id}')">Skip</button>`;
+                        } else if (t.status === "in_progress") {
+                            if (t.problem_id) {
+                                actionsHtml += `<button class="btn btn-secondary btn-sm" style="font-size: 0.7rem; padding: 2px 6px; margin-right: 4px;" onclick="launchWorkspace('${t.problem_id}')">🚀 Solve</button>`;
+                            }
+                            actionsHtml += `<button class="btn btn-primary btn-sm" style="font-size: 0.7rem; padding: 2px 6px; margin-right: 4px; background:#059669;" onclick="completeDailyPracticeTask('${t.task_id}')">Done</button>`;
+                            actionsHtml += `<button class="btn btn-secondary btn-sm" style="font-size: 0.7rem; padding: 2px 6px;" onclick="skipDailyPracticeTask('${t.task_id}')">Skip</button>`;
+                        } else {
+                            actionsHtml = `<span style="font-size: 0.75rem; color: var(--text-muted);">${t.verified_pass ? '✅ Verified' : 'Finished'}</span>`;
+                        }
+                    } else {
+                        actionsHtml = `<span style="font-size: 0.75rem; color: var(--text-muted);">${t.verified_pass ? '✅ Verified' : (t.status)}</span>`;
+                    }
+
+                    return `
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <td style="padding: 6px 8px; color: var(--text-muted); font-size: 0.75rem;">${t.order_index}</td>
+                            <td style="padding: 6px 8px;"><span class="badge" style="background:${typeBg}; color:${typeColor}; font-size:0.7rem;">${t.task_type}</span></td>
+                            <td style="padding: 6px 8px; font-weight: 600; color: var(--text);">
+                                ${t.title}
+                                ${t.problem_id ? '<span style="font-size:0.75rem; color: var(--text-muted); font-weight: normal;"> (#' + t.problem_id + ')</span>' : ''}
+                            </td>
+                            <td style="padding: 6px 8px; color: #cbd5e1;">${t.target_duration_minutes}m</td>
+                            <td style="padding: 6px 8px; color: #cbd5e1;">${t.actual_duration_minutes || 0}m</td>
+                            <td style="padding: 6px 8px;"><span class="badge" style="background:${statusBg}; color:${statusColor}; font-size:0.7rem;">${t.status}</span></td>
+                            <td style="padding: 6px 8px; white-space: nowrap;">${actionsHtml}</td>
+                        </tr>
+                    `;
+                }).join("");
             }
         }
 
@@ -7772,6 +8277,304 @@ def create_app(
             return jsonify(asdict(prop)), 200
         except ValueError as e:
             return jsonify({"error": str(e)}), 404
+
+    # =========================================================================
+    # Milestone 6.3.26: Guided Daily Practice & Study Session Endpoints
+    # =========================================================================
+
+    @app.route("/api/daily-practice")
+    def api_daily_practice_overview():
+        """Retrieve overview summary of the daily practice orchestrator."""
+        orchestrator = DailyPracticeOrchestrator(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        return jsonify(orchestrator.get_overview())
+
+    @app.route("/api/daily-practice/latest")
+    def api_daily_practice_latest():
+        """Retrieve the latest daily practice session."""
+        orchestrator = DailyPracticeOrchestrator(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        session = orchestrator.get_latest_session()
+        if not session:
+            return jsonify({"session": None}), 200
+        from dataclasses import asdict
+        return jsonify(asdict(session)), 200
+
+    @app.route("/api/daily-practice/history")
+    def api_daily_practice_history():
+        """Retrieve list of historical daily practice sessions."""
+        limit_str = request.args.get("limit", "20")
+        try:
+            limit = int(limit_str)
+        except ValueError:
+            limit = 20
+        limit = max(1, min(100, limit))
+        orchestrator = DailyPracticeOrchestrator(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        return jsonify({"sessions": orchestrator.list_sessions(limit=limit)}), 200
+
+    @app.route("/api/daily-practice/generate", methods=["POST"])
+    def api_daily_practice_generate():
+        """Generate or preview a daily study session based on real evidence."""
+        data = request.get_json(silent=True) or {}
+        budget_minutes = data.get("budget_minutes", 45)
+        preview_only = data.get("preview_only", False)
+        title = data.get("title")
+        focus_topics = data.get("focus_topics")
+
+        try:
+            budget_minutes = int(budget_minutes)
+        except (ValueError, TypeError):
+            return jsonify({"error": "budget_minutes must be an integer"}), 400
+
+        orchestrator = DailyPracticeOrchestrator(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        from dataclasses import asdict
+        try:
+            if preview_only:
+                preview = orchestrator.preview_session(
+                    budget_minutes=budget_minutes,
+                    title=title,
+                    focus_topics=focus_topics,
+                )
+                return jsonify(asdict(preview)), 200
+            else:
+                session = orchestrator.generate_session(
+                    budget_minutes=budget_minutes,
+                    title=title,
+                    focus_topics=focus_topics,
+                )
+                return jsonify(asdict(session)), 201
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/daily-practice/start", methods=["POST"])
+    def api_daily_practice_start():
+        """Start a generated daily practice session."""
+        data = request.get_json(silent=True) or {}
+        session_id = data.get("session_id")
+        if not session_id or not re.match(r"^[a-zA-Z0-9_\-]+$", session_id):
+            return jsonify({"error": "Invalid or missing session_id"}), 400
+
+        orchestrator = DailyPracticeOrchestrator(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            session = orchestrator.start_session(session_id)
+            from dataclasses import asdict
+            return jsonify(asdict(session)), 200
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/daily-practice/task/start", methods=["POST"])
+    def api_daily_practice_task_start():
+        """Mark a specific task within an active session as in progress."""
+        data = request.get_json(silent=True) or {}
+        session_id = data.get("session_id")
+        task_id = data.get("task_id")
+        if not session_id or not re.match(r"^[a-zA-Z0-9_\-]+$", session_id):
+            return jsonify({"error": "Invalid or missing session_id"}), 400
+        if not task_id or not re.match(r"^[a-zA-Z0-9_\-]+$", task_id):
+            return jsonify({"error": "Invalid or missing task_id"}), 400
+
+        orchestrator = DailyPracticeOrchestrator(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            session = orchestrator.start_task(session_id, task_id)
+            from dataclasses import asdict
+            return jsonify(asdict(session)), 200
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/daily-practice/task/complete", methods=["POST"])
+    def api_daily_practice_task_complete():
+        """Mark a specific task within an active session as completed."""
+        data = request.get_json(silent=True) or {}
+        session_id = data.get("session_id")
+        task_id = data.get("task_id")
+        verified_pass = bool(data.get("verified_pass", False))
+        notes = data.get("notes", "")
+        test_run_id = data.get("test_run_id")
+
+        if not session_id or not re.match(r"^[a-zA-Z0-9_\-]+$", session_id):
+            return jsonify({"error": "Invalid or missing session_id"}), 400
+        if not task_id or not re.match(r"^[a-zA-Z0-9_\-]+$", task_id):
+            return jsonify({"error": "Invalid or missing task_id"}), 400
+
+        orchestrator = DailyPracticeOrchestrator(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            session = orchestrator.complete_task(
+                session_id=session_id,
+                task_id=task_id,
+                verified_pass=verified_pass,
+                notes=notes,
+                test_run_id=test_run_id,
+            )
+            from dataclasses import asdict
+            return jsonify(asdict(session)), 200
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/daily-practice/task/skip", methods=["POST"])
+    def api_daily_practice_task_skip():
+        """Skip a specific task within an active session."""
+        data = request.get_json(silent=True) or {}
+        session_id = data.get("session_id")
+        task_id = data.get("task_id")
+        reason = data.get("reason", "")
+
+        if not session_id or not re.match(r"^[a-zA-Z0-9_\-]+$", session_id):
+            return jsonify({"error": "Invalid or missing session_id"}), 400
+        if not task_id or not re.match(r"^[a-zA-Z0-9_\-]+$", task_id):
+            return jsonify({"error": "Invalid or missing task_id"}), 400
+
+        orchestrator = DailyPracticeOrchestrator(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            session = orchestrator.skip_task(session_id=session_id, task_id=task_id, reason=reason)
+            from dataclasses import asdict
+            return jsonify(asdict(session)), 200
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/daily-practice/pause", methods=["POST"])
+    def api_daily_practice_pause():
+        """Pause an active daily practice session."""
+        data = request.get_json(silent=True) or {}
+        session_id = data.get("session_id")
+        reason = data.get("reason", "")
+
+        if not session_id or not re.match(r"^[a-zA-Z0-9_\-]+$", session_id):
+            return jsonify({"error": "Invalid or missing session_id"}), 400
+
+        orchestrator = DailyPracticeOrchestrator(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            session = orchestrator.pause_session(session_id=session_id, reason=reason)
+            from dataclasses import asdict
+            return jsonify(asdict(session)), 200
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/daily-practice/resume", methods=["POST"])
+    def api_daily_practice_resume():
+        """Resume a paused daily practice session."""
+        data = request.get_json(silent=True) or {}
+        session_id = data.get("session_id")
+
+        if not session_id or not re.match(r"^[a-zA-Z0-9_\-]+$", session_id):
+            return jsonify({"error": "Invalid or missing session_id"}), 400
+
+        orchestrator = DailyPracticeOrchestrator(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            session = orchestrator.resume_session(session_id=session_id)
+            from dataclasses import asdict
+            return jsonify(asdict(session)), 200
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/daily-practice/abandon", methods=["POST"])
+    def api_daily_practice_abandon():
+        """Abandon a session safely without data corruption."""
+        data = request.get_json(silent=True) or {}
+        session_id = data.get("session_id")
+        reason = data.get("reason", "")
+
+        if not session_id or not re.match(r"^[a-zA-Z0-9_\-]+$", session_id):
+            return jsonify({"error": "Invalid or missing session_id"}), 400
+
+        orchestrator = DailyPracticeOrchestrator(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            session = orchestrator.abandon_session(session_id=session_id, reason=reason)
+            from dataclasses import asdict
+            return jsonify(asdict(session)), 200
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/daily-practice/complete", methods=["POST"])
+    def api_daily_practice_complete():
+        """Complete an active or paused daily practice session."""
+        data = request.get_json(silent=True) or {}
+        session_id = data.get("session_id")
+        notes = data.get("notes", "")
+
+        if not session_id or not re.match(r"^[a-zA-Z0-9_\-]+$", session_id):
+            return jsonify({"error": "Invalid or missing session_id"}), 400
+
+        orchestrator = DailyPracticeOrchestrator(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            session, report = orchestrator.complete_session(session_id=session_id, notes=notes)
+            from dataclasses import asdict
+            return jsonify({
+                "session": asdict(session),
+                "report": asdict(report),
+            }), 200
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/daily-practice/report/<session_id>")
+    def api_daily_practice_report(session_id: str):
+        """Retrieve verified retrospective report for a session."""
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", session_id):
+            return jsonify({"error": "Invalid session_id format"}), 400
+
+        orchestrator = DailyPracticeOrchestrator(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            report = orchestrator.get_report(session_id)
+            from dataclasses import asdict
+            return jsonify(asdict(report)), 200
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 404
+
+    @app.route("/api/daily-practice/re-evaluate", methods=["POST"])
+    def api_daily_practice_reevaluate():
+        """Feed completed session evidence back into the Adaptive Learning Loop."""
+        data = request.get_json(silent=True) or {}
+        session_id = data.get("session_id")
+
+        if not session_id or not re.match(r"^[a-zA-Z0-9_\-]+$", session_id):
+            return jsonify({"error": "Invalid or missing session_id"}), 400
+
+        orchestrator = DailyPracticeOrchestrator(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            loop_report = orchestrator.reevaluate_learning_loop(session_id)
+            from dataclasses import asdict
+            return jsonify(asdict(loop_report)), 200
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
 
     return app
 

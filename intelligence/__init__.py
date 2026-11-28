@@ -173,6 +173,18 @@ from intelligence.learning_loop import (
     ProposalActionType,
     ProposalStatus,
 )
+from intelligence.daily_practice import (
+    DailyPracticeEvidence,
+    DailyPracticeOrchestrator,
+    DailyPracticeProgress,
+    DailyPracticeReport,
+    DailyPracticeSchedule,
+    DailyPracticeSession,
+    DailyPracticeSessionStatus,
+    DailyPracticeTask,
+    DailyPracticeTaskStatus,
+    DailyPracticeTaskType,
+)
 from intelligence.preparation_planner import (
     IntensityLevel,
     PlanProgress,
@@ -336,4 +348,14 @@ __all__ = [
     "LearningLoopChangeProposal",
     "ProposalStatus",
     "ProposalActionType",
+    "DailyPracticeOrchestrator",
+    "DailyPracticeSession",
+    "DailyPracticeTask",
+    "DailyPracticeReport",
+    "DailyPracticeEvidence",
+    "DailyPracticeSchedule",
+    "DailyPracticeTaskStatus",
+    "DailyPracticeSessionStatus",
+    "DailyPracticeTaskType",
+    "DailyPracticeProgress",
 ]

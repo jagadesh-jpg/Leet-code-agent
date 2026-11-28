@@ -96,6 +96,12 @@ from intelligence.daily_practice import (
     DailyPracticeTaskStatus,
     DailyPracticeTaskType,
 )
+from intelligence.command_center import (
+    CommandCenterManager,
+    CommandCenterOverview,
+    PrimaryAction,
+    PrimaryActionType,
+)
 from intelligence.planner import SessionPlanner
 from intelligence.portfolio import (
     DEFAULT_PORTFOLIO_EXPORTS_DIR,
@@ -404,6 +410,62 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             padding-top: 20px;
             border-top: 1px solid var(--border);
         }
+
+        /* Milestone 6.3.27: Unified Learning Command Center Navigation & UX */
+        .command-nav {
+            display: flex;
+            gap: 6px;
+            overflow-x: auto;
+            padding: 10px 0;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            background: rgba(15, 23, 42, 0.95);
+            z-index: 100;
+            backdrop-filter: blur(8px);
+        }
+        .nav-tab {
+            background: rgba(30, 41, 59, 0.6);
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+            transition: all 0.2s ease;
+        }
+        .nav-tab:hover {
+            color: #fff;
+            background: rgba(51, 65, 85, 0.8);
+            border-color: rgba(148, 163, 184, 0.3);
+        }
+        .nav-tab.active {
+            background: var(--primary);
+            color: #fff;
+            border-color: var(--primary);
+            box-shadow: 0 0 12px rgba(59, 130, 246, 0.35);
+        }
+        .nav-badge {
+            background: #ef4444;
+            color: #fff;
+            border-radius: 10px;
+            padding: 1px 6px;
+            font-size: 0.7rem;
+            font-weight: 700;
+        }
+        .tab-content-pane {
+            animation: fadeIn 0.2s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
     </style>
 </head>
 <body>
@@ -420,32 +482,224 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
         <div id="alertBanner" class="alert-banner"></div>
 
-        <!-- Top Stat Cards -->
-        <div class="grid-stats">
-            <div class="stat-card">
-                <div class="label">Problems Solved</div>
-                <div class="value" id="statSolved">{{ data.summary.unique_problems_solved }}</div>
-                <div class="subtext">{{ data.summary.by_difficulty_solved.Easy }} Easy, {{ data.summary.by_difficulty_solved.Medium }} Med, {{ data.summary.by_difficulty_solved.Hard }} Hard</div>
+        <!-- Navigation Bar (Milestone 6.3.27) -->
+        <nav class="command-nav">
+            <button class="nav-tab active" data-tab="overview" onclick="switchTab('overview')">
+                <span>🌟</span> Overview
+            </button>
+            <button class="nav-tab" data-tab="daily-practice" onclick="switchTab('daily-practice')">
+                <span>📅</span> Today's Learning
+            </button>
+            <button class="nav-tab" data-tab="skills" onclick="switchTab('skills')">
+                <span>🎯</span> My Skill Focus
+            </button>
+            <button class="nav-tab" data-tab="adaptive-learning" onclick="switchTab('adaptive-learning')">
+                <span>🔄</span> Adaptive Learning <span id="tabLoopBadge" class="nav-badge" style="display: none;">0</span>
+            </button>
+            <button class="nav-tab" data-tab="learning-plan" onclick="switchTab('learning-plan')">
+                <span>🗓️</span> Learning Plan
+            </button>
+            <button class="nav-tab" data-tab="coding-performance" onclick="switchTab('coding-performance')">
+                <span>📊</span> Coding Analytics
+            </button>
+            <button class="nav-tab" data-tab="interviews" onclick="switchTab('interviews')">
+                <span>💼</span> Mock Interviews
+            </button>
+            <button class="nav-tab" data-tab="revision" onclick="switchTab('revision')">
+                <span>🔁</span> Revision <span id="tabRevBadge" class="nav-badge" style="display: none;">0</span>
+            </button>
+            <button class="nav-tab" data-tab="reports" onclick="switchTab('reports')">
+                <span>📑</span> Reports & Goals
+            </button>
+            <button class="nav-tab" data-tab="all" onclick="switchTab('all')" style="margin-left: auto;">
+                <span>🗂️</span> All Sections
+            </button>
+        </nav>
+
+        <!-- Section: Overview (Command Center Hub) -->
+        <div class="tab-content-pane" id="pane-overview" data-tab="overview">
+            <!-- Unified Action Flow Hero Banner (Milestone 6.3.27) -->
+            <div id="unifiedActionBanner" class="card" style="border: 2px solid #3b82f6; background: linear-gradient(135deg, rgba(30, 58, 138, 0.35) 0%, rgba(15, 23, 42, 0.85) 100%); margin-bottom: 20px; padding: 18px 22px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+                    <div style="display: flex; align-items: center; gap: 14px; flex: 1; min-width: 280px;">
+                        <div id="uafIcon" style="font-size: 2.2rem; line-height: 1; background: rgba(59, 130, 246, 0.2); padding: 10px; border-radius: 10px; border: 1px solid rgba(59, 130, 246, 0.4);">🎯</div>
+                        <div>
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                                <span style="font-size: 0.75rem; font-weight: 700; color: #93c5fd; text-transform: uppercase; letter-spacing: 0.05em;">Recommended Next Action</span>
+                                <span id="uafPriorityBadge" class="badge" style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; font-size: 0.7rem; font-weight: 700;">P0 IMMEDIATE</span>
+                            </div>
+                            <h2 id="uafTitle" style="margin: 0 0 4px 0; font-size: 1.25rem; color: #fff; font-weight: 700;">Loading action flow...</h2>
+                            <p id="uafDescription" style="margin: 0; font-size: 0.85rem; color: #cbd5e1;">Evaluating evidence across local sessions, skill gaps, and revision items...</p>
+                            <div id="uafEvidence" style="margin-top: 6px; font-size: 0.75rem; color: #94a3b8; font-style: italic;"></div>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button id="uafCtaBtn" class="btn btn-primary" onclick="executePrimaryAction()" style="font-size: 0.9rem; padding: 10px 18px; font-weight: 600; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);">
+                            Resume Practice
+                        </button>
+                    </div>
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="label">Total Attempts</div>
-                <div class="value" id="statAttempts">{{ data.summary.attempts_summary.total_attempts }}</div>
-                <div class="subtext">{{ data.summary.attempts_summary.passed_attempts }} Passed / {{ data.summary.attempts_summary.failed_attempts }} Failed</div>
+
+            <!-- Top Stat Cards -->
+            <div class="grid-stats">
+                <div class="stat-card">
+                    <div class="label">Problems Solved</div>
+                    <div class="value" id="statSolved">{{ data.summary.unique_problems_solved }}</div>
+                    <div class="subtext" id="statSolvedSubtext">{{ data.summary.by_difficulty_solved.Easy }} Easy, {{ data.summary.by_difficulty_solved.Medium }} Med, {{ data.summary.by_difficulty_solved.Hard }} Hard</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Total Attempts</div>
+                    <div class="value" id="statAttempts">{{ data.summary.attempts_summary.total_attempts }}</div>
+                    <div class="subtext" id="statAttemptsSubtext">{{ data.summary.attempts_summary.passed_attempts }} Passed / {{ data.summary.attempts_summary.failed_attempts }} Failed</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Tracked Sessions</div>
+                    <div class="value" id="statSessions">{{ data.learning_intelligence.session_analytics.total_sessions_planned }}</div>
+                    <div class="subtext" id="statSessionRate">{{ (data.learning_intelligence.session_analytics.session_completion_rate * 100)|round(0) }}% Completion Rate</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Adaptive Session Sizing</div>
+                    <div class="value">{{ data.learning_intelligence.suggested_session_sizing.recommended_size }} <span style="font-size: 1rem; color: var(--text-muted);">problems</span></div>
+                    <div class="subtext">{{ data.learning_intelligence.suggested_session_sizing.rationale[:40] }}...</div>
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="label">Tracked Sessions</div>
-                <div class="value" id="statSessions">{{ data.learning_intelligence.session_analytics.total_sessions_planned }}</div>
-                <div class="subtext" id="statSessionRate">{{ (data.learning_intelligence.session_analytics.session_completion_rate * 100)|round(0) }}% Completion Rate</div>
-            </div>
-            <div class="stat-card">
-                <div class="label">Adaptive Session Sizing</div>
-                <div class="value">{{ data.learning_intelligence.suggested_session_sizing.recommended_size }} <span style="font-size: 1rem; color: var(--text-muted);">problems</span></div>
-                <div class="subtext">{{ data.learning_intelligence.suggested_session_sizing.rationale[:40] }}...</div>
+
+            <!-- Overview Command Center Grid -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 20px;">
+                <!-- Widget 1: Today's Learning Practice -->
+                <div class="card" style="margin-bottom: 0; border-top: 3px solid #10b981;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <div style="font-weight: 700; font-size: 1rem; color: var(--text); display: flex; align-items: center; gap: 8px;">
+                            <span>📅</span> Today's Learning Practice
+                        </div>
+                        <span id="ovTodayStatusBadge" class="badge" style="background: rgba(16, 185, 129, 0.2); color: #6ee7b7; font-size: 0.7rem;">NO SESSION</span>
+                    </div>
+                    <div style="font-size: 0.85rem; color: #cbd5e1; margin-bottom: 8px;" id="ovTodayTitle">No study session active today.</div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px;">
+                        <span>Time Spent: <strong id="ovTodayTime" style="color: #6ee7b7;">0 / 45m</strong></span>
+                        <span>Progress: <strong id="ovTodayProgress" style="color: var(--primary);">0%</strong></span>
+                    </div>
+                    <div class="progress-bar-container" style="height: 6px; margin-bottom: 12px;">
+                        <div class="progress-bar-fill" id="ovTodayProgressBar" style="width: 0%; background: #10b981;"></div>
+                    </div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;" id="ovTodayCurrentTask">
+                        Current Focus: <strong>None</strong>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" style="width: 100%;" onclick="switchTab('daily-practice')">
+                        Open Today's Learning →
+                    </button>
+                </div>
+
+                <!-- Widget 2: My Skill Focus -->
+                <div class="card" style="margin-bottom: 0; border-top: 3px solid #8b5cf6;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <div style="font-weight: 700; font-size: 1rem; color: var(--text); display: flex; align-items: center; gap: 8px;">
+                            <span>🎯</span> Algorithmic Skill Focus
+                        </div>
+                        <span id="ovSkillPriorityBadge" class="badge" style="background: rgba(139, 92, 246, 0.2); color: #c4b5fd; font-size: 0.7rem;">PRIORITY GAP</span>
+                    </div>
+                    <div style="font-size: 0.85rem; color: #cbd5e1; margin-bottom: 6px;">
+                        Top Target: <strong id="ovSkillTopTopic" style="color: #c4b5fd;">General</strong> (<span id="ovSkillTopDiff">Medium</span>)
+                    </div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 10px;" id="ovSkillEvidence">
+                        Analyzing algorithmic topic distributions and failure patterns.
+                    </div>
+                    <div style="background: rgba(15, 23, 42, 0.5); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border); font-size: 0.75rem; color: var(--text-muted); margin-bottom: 12px;" id="ovSkillSuggestedBox">
+                        Suggested Drill: <strong id="ovSkillSuggestedProblem" style="color: #93c5fd;">two-sum</strong>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" style="width: 100%;" onclick="switchTab('skills')">
+                        Inspect Skill Gaps →
+                    </button>
+                </div>
+
+                <!-- Widget 3: Adaptive Learning Loop -->
+                <div class="card" style="margin-bottom: 0; border-top: 3px solid #06b6d4;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <div style="font-weight: 700; font-size: 1rem; color: var(--text); display: flex; align-items: center; gap: 8px;">
+                            <span>🔄</span> Adaptive Learning Loop
+                        </div>
+                        <span id="ovLoopPhaseBadge" class="badge" style="background: rgba(6, 182, 212, 0.2); color: #67e8f9; font-size: 0.7rem;">DIAGNOSIS</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 8px;">
+                        <span style="color: var(--text-muted);">Pending Proposals:</span>
+                        <strong id="ovLoopProposalsCount" style="color: #fde047;">0 awaiting review</strong>
+                    </div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;" id="ovLoopLastEval">
+                        Last evaluation: Baseline established.
+                    </div>
+                    <div style="background: rgba(15, 23, 42, 0.5); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border); font-size: 0.75rem; color: #a5f3fc; margin-bottom: 12px;" id="ovLoopSummaryText">
+                        Proposals require explicit acceptance before modifying active plan.
+                    </div>
+                    <button class="btn btn-secondary btn-sm" style="width: 100%;" onclick="switchTab('adaptive-learning')">
+                        Review Plan Reconciliation →
+                    </button>
+                </div>
+
+                <!-- Widget 4: Interview & Preparation -->
+                <div class="card" style="margin-bottom: 0; border-top: 3px solid #f59e0b;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <div style="font-weight: 700; font-size: 1rem; color: var(--text); display: flex; align-items: center; gap: 8px;">
+                            <span>💼</span> Interview & Preparation
+                        </div>
+                        <span id="ovPlanStatusBadge" class="badge" style="background: rgba(245, 158, 11, 0.2); color: #fcd34d; font-size: 0.7rem;">PLANNER</span>
+                    </div>
+                    <div style="font-size: 0.85rem; color: #cbd5e1; margin-bottom: 6px;" id="ovPlanTitle">
+                        No active preparation plan.
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px;">
+                        <span>Tasks Completed: <strong id="ovPlanTasks" style="color: #fcd34d;">0 / 0</strong></span>
+                        <span>Overdue Revisions: <strong id="ovOverdueRevisions" style="color: #f87171;">0</strong></span>
+                    </div>
+                    <div class="progress-bar-container" style="height: 6px; margin-bottom: 12px;">
+                        <div class="progress-bar-fill" id="ovPlanProgressBar" style="width: 0%; background: #f59e0b;"></div>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" style="width: 100%;" onclick="switchTab('learning-plan')">
+                        Open Learning Plan →
+                    </button>
+                </div>
+
+                <!-- Widget 5: Coding Performance & Languages -->
+                <div class="card" style="margin-bottom: 0; border-top: 3px solid #3b82f6;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <div style="font-weight: 700; font-size: 1rem; color: var(--text); display: flex; align-items: center; gap: 8px;">
+                            <span>📊</span> Coding Performance & Analytics
+                        </div>
+                        <span class="badge" style="background: rgba(59, 130, 246, 0.2); color: #93c5fd; font-size: 0.7rem;">ANALYTICS</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 8px;">
+                        <span style="color: var(--text-muted);">First-Attempt Pass Rate:</span>
+                        <strong id="ovFirstPassRate" style="color: #6ee7b7;">0.0%</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 8px;">
+                        <span style="color: var(--text-muted);">Overall Accuracy:</span>
+                        <strong id="ovOverallAccuracy" style="color: #93c5fd;">0.0%</strong>
+                    </div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 12px;" id="ovLanguageBreakdown">
+                        Languages: Python
+                    </div>
+                    <button class="btn btn-secondary btn-sm" style="width: 100%;" onclick="switchTab('coding-performance')">
+                        View Coding Analytics →
+                    </button>
+                </div>
+
+                <!-- Widget 6: Recent Activity Stream -->
+                <div class="card" style="margin-bottom: 0; border-top: 3px solid #ec4899;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <div style="font-weight: 700; font-size: 1rem; color: var(--text); display: flex; align-items: center; gap: 8px;">
+                            <span>📋</span> Recent Activity Stream
+                        </div>
+                        <button class="btn btn-secondary btn-sm" style="font-size: 0.7rem; padding: 2px 6px;" onclick="reloadCommandCenter()">🔄</button>
+                    </div>
+                    <div id="ovRecentActivityList" style="max-height: 145px; overflow-y: auto; font-size: 0.75rem;">
+                        <div style="padding: 8px 0; color: var(--text-muted); text-align: center;">Loading activity...</div>
+                    </div>
+                </div>
             </div>
         </div>
 
         <!-- Adaptive Learning Recommendation -->
-        <div class="card">
+        <div class="card tab-content-pane" style="display: none;" data-tab="adaptive-learning">
             <div class="card-header">
                 <h2>Adaptive Next Learning Action</h2>
                 <span class="status-badge badge-proficient">Confidence: {{ data.learning_intelligence.primary_recommendation.confidence|upper }}</span>
@@ -461,7 +715,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Interactive Session Planner & Preview Workspace -->
-        <div class="card">
+        <div class="card tab-content-pane" id="sessionPlannerCard" style="display: none;" data-tab="reports">
             <div class="card-header">
                 <h2>Session Planner & Interactive Preview</h2>
                 <div>
@@ -530,7 +784,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Tracked Learning Sessions Management -->
-        <div class="card">
+        <div class="card tab-content-pane" id="trackedSessionsCard" style="display: none;" data-tab="coding-performance">
             <div class="card-header">
                 <h2>Tracked Learning Sessions</h2>
                 <button class="btn btn-secondary btn-sm" onclick="reloadSessionsTable()">Refresh Sessions</button>
@@ -574,7 +828,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Algorithmic Topic Mastery Table -->
-        <div class="card">
+        <div class="card tab-content-pane" id="topicMasteryCard" style="display: none;" data-tab="skills">
             <div class="card-header">
                 <h2>Algorithmic Topic Mastery</h2>
             </div>
@@ -605,7 +859,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Learning Insights & Performance Analytics Export Section (Milestone 6.3.10) -->
-        <div class="card">
+        <div class="card tab-content-pane" id="insightsExportCard" style="display: none;" data-tab="coding-performance">
             <div class="card-header">
                 <h2>Learning Insights & Sanitized Performance Export</h2>
                 <div>
@@ -633,7 +887,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Offline Intelligent Coding Coach Workspace (Milestone 6.3.11) -->
-        <div class="card">
+        <div class="card tab-content-pane" id="coachCard" style="display: none;" data-tab="daily-practice">
             <div class="card-header">
                 <h2>Offline Intelligent Coding Coach</h2>
                 <span class="status-badge badge-mastered">100% Offline AI double / Zero Cloud APIs</span>
@@ -687,7 +941,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Spaced Repetition & Smart Revision Center (Milestone 6.3.12) -->
-        <div class="card">
+        <div class="card tab-content-pane" id="revisionCard" style="display: none;" data-tab="revision">
             <div class="card-header">
                 <h2>Spaced Repetition & Smart Revision Center</h2>
                 <button class="btn btn-secondary btn-sm" onclick="reloadRevisionQueue()">Refresh Queue</button>
@@ -757,7 +1011,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Personal Learning Goals & Milestone Achievements (Milestone 6.3.13) -->
-        <div class="card">
+        <div class="card tab-content-pane" id="goalsCard" style="display: none;" data-tab="reports">
             <div class="card-header">
                 <h2>Learning Goals & Milestone Achievements</h2>
                 <button class="btn btn-secondary btn-sm" onclick="reloadGoalsAndMilestones()">Refresh Goals</button>
@@ -838,7 +1092,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Personalized DSA Skill Roadmap & Mastery Map (Milestone 6.3.14) -->
-        <div class="card">
+        <div class="card tab-content-pane" id="roadmapCard" style="display: none;" data-tab="skills">
             <div class="card-header">
                 <h2>Personalized DSA Skill Roadmap & Mastery Map</h2>
                 <button class="btn btn-secondary btn-sm" onclick="reloadRoadmapData()">Refresh Roadmap</button>
@@ -885,7 +1139,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Daily Learning Mission & Focus Mode (Milestone 6.3.15) -->
-        <div class="card">
+        <div class="card tab-content-pane" id="dailyMissionCard" style="display: none;" data-tab="daily-practice">
             <div class="card-header">
                 <h2>Daily Learning Mission & Focus Mode</h2>
                 <div style="display: flex; gap: 8px;">
@@ -967,7 +1221,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Mission-Integrated Coding Workspace (Milestone 6.3.16) -->
-        <div class="card" id="codingWorkspaceCard">
+        <div class="card tab-content-pane" id="codingWorkspaceCard" style="display: none;" data-tab="daily-practice">
             <div class="card-header">
                 <h2>Mission-Integrated Coding Workspace</h2>
                 <div style="display: flex; gap: 8px;">
@@ -1099,7 +1353,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Personal Learning Portfolio & Progress Report Generator (Milestone 6.3.18) -->
-        <div class="card" id="portfolioSection">
+        <div class="card tab-content-pane" id="portfolioSection" style="display: none;" data-tab="reports">
             <div class="card-header">
                 <div>
                     <h2>Personal Learning Portfolio & Progress Report Generator</h2>
@@ -1202,7 +1456,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Mock Interview & Assessment Mode (Milestone 6.3.19) -->
-        <div class="card" id="interviewSection">
+        <div class="card tab-content-pane" id="interviewSection" style="display: none;" data-tab="interviews">
             <div class="card-header">
                 <div>
                     <h2>Mock Interview & Technical Assessment Mode</h2>
@@ -1400,7 +1654,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Interview Performance Trends & Benchmark Analytics (Milestone 6.3.20) -->
-        <div class="card" id="interviewAnalyticsSection">
+        <div class="card tab-content-pane" id="interviewAnalyticsSection" style="display: none;" data-tab="interviews">
             <div class="card-header">
                 <div>
                     <h2>Interview Performance Trends & Benchmark Analytics</h2>
@@ -1526,7 +1780,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Milestone 6.3.21: Adaptive Interview Preparation Planner Card -->
-        <div class="card" style="margin-bottom: 24px;">
+        <div class="card tab-content-pane" id="prepPlannerCard" style="display: none; margin-bottom: 24px;" data-tab="learning-plan">
             <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                 <div>
                     <h2 class="card-title" style="margin: 0; font-size: 1.15rem; display: flex; align-items: center; gap: 8px;">
@@ -1661,7 +1915,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Milestone 6.3.22: Plan-to-Practice Execution Bridge Card -->
-        <div class="card" id="practiceSessionCard" style="margin-bottom: 24px;">
+        <div class="card tab-content-pane" id="practiceSessionCard" style="display: none; margin-bottom: 24px;" data-tab="daily-practice">
             <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                 <div>
                     <h2 class="card-title" style="margin: 0; font-size: 1.15rem; display: flex; align-items: center; gap: 8px;">
@@ -1776,7 +2030,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Personal Coding Behavior Intelligence Panel (Milestone 6.3.23) -->
-        <div class="card" id="codingBehaviorCard" style="border-top: 3px solid #8b5cf6;">
+        <div class="card tab-content-pane" id="codingBehaviorCard" style="display: none; border-top: 3px solid #8b5cf6;" data-tab="coding-performance">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <h2 style="margin: 0; font-size: 1.2rem; color: var(--text);">🧠 Personal Coding Behavior Intelligence</h2>
@@ -1857,7 +2111,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Personal Skill Gap & Focus Prioritization Panel (Milestone 6.3.24) -->
-        <div class="card" id="skillGapCard" style="border-top: 3px solid #ec4899;">
+        <div class="card tab-content-pane" id="skillGapCard" style="display: none; border-top: 3px solid #ec4899;" data-tab="skills">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <h2 style="margin: 0; font-size: 1.2rem; color: var(--text);">🎯 Personal Skill Gap & Focus Prioritization</h2>
@@ -1948,7 +2202,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Adaptive Learning Loop & Plan Reconciliation Panel (Milestone 6.3.25) -->
-        <div class="card" id="learningLoopCard" style="border-top: 3px solid #06b6d4;">
+        <div class="card tab-content-pane" id="learningLoopCard" style="display: none; border-top: 3px solid #06b6d4;" data-tab="adaptive-learning">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <h2 style="margin: 0; font-size: 1.2rem; color: var(--text);">🔄 Adaptive Learning Loop & Plan Reconciliation</h2>
@@ -2036,7 +2290,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         </div>
 
         <!-- Guided Daily Practice & Study Session Orchestrator Panel (Milestone 6.3.26) -->
-        <div class="card" id="dailyPracticeCard" style="border-top: 3px solid #10b981;">
+        <div class="card tab-content-pane" id="dailyPracticeCard" style="display: none; border-top: 3px solid #10b981;" data-tab="daily-practice">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <h2 style="margin: 0; font-size: 1.2rem; color: var(--text);">📅 Guided Daily Practice & Study Session</h2>
@@ -4161,24 +4415,399 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             }
         }
 
-        // Initialize Coach, Revision, Goals, Roadmap, Daily Mission, Workspace, Portfolio, Interview, and Analytics on window load
+        // =========================================================================
+        // Milestone 6.3.27: Unified Learning Command Center Client Functions
+        // =========================================================================
+
+        let currentPrimaryAction = null;
+
+        function switchTab(tabId) {
+            if (!tabId) tabId = 'overview';
+            
+            // Update active state on nav buttons
+            const navTabs = document.querySelectorAll('.command-nav .nav-tab');
+            navTabs.forEach(tab => {
+                if (tab.getAttribute('data-tab') === tabId) {
+                    tab.classList.add('active');
+                } else {
+                    tab.classList.remove('active');
+                }
+            });
+
+            // Update content visibility
+            const overviewPane = document.getElementById('pane-overview');
+            const allPanes = document.querySelectorAll('.tab-content-pane');
+
+            if (tabId === 'all') {
+                if (overviewPane) overviewPane.style.display = 'block';
+                allPanes.forEach(pane => {
+                    pane.style.display = 'block';
+                });
+            } else if (tabId === 'overview') {
+                if (overviewPane) overviewPane.style.display = 'block';
+                allPanes.forEach(pane => {
+                    if (pane.id !== 'pane-overview') {
+                        pane.style.display = 'none';
+                    }
+                });
+            } else {
+                if (overviewPane) overviewPane.style.display = 'none';
+                allPanes.forEach(pane => {
+                    if (pane.id === 'pane-overview') {
+                        pane.style.display = 'none';
+                    } else if (pane.getAttribute('data-tab') === tabId) {
+                        pane.style.display = 'block';
+                    } else {
+                        pane.style.display = 'none';
+                    }
+                });
+            }
+
+            // Sync URL hash without triggering recursive hashchange
+            if (window.location.hash !== '#' + tabId) {
+                history.replaceState(null, '', '#' + tabId);
+            }
+
+            // Trigger targeted data reload for active tab
+            onTabActivated(tabId);
+        }
+
+        function onTabActivated(tabId) {
+            switch (tabId) {
+                case 'overview':
+                    reloadCommandCenter();
+                    break;
+                case 'daily-practice':
+                    if (typeof reloadDailyPractice === 'function') reloadDailyPractice();
+                    break;
+                case 'skills':
+                    if (typeof reloadSkillGaps === 'function') reloadSkillGaps();
+                    break;
+                case 'adaptive-learning':
+                    if (typeof reloadLearningLoop === 'function') reloadLearningLoop();
+                    break;
+                case 'learning-plan':
+                    if (typeof reloadPreparationPlanner === 'function') reloadPreparationPlanner();
+                    break;
+                case 'coding-performance':
+                    if (typeof reloadCodingBehavior === 'function') reloadCodingBehavior();
+                    break;
+                case 'interviews':
+                    if (typeof reloadInterviewAnalytics === 'function') reloadInterviewAnalytics();
+                    if (typeof reloadInterviewHistory === 'function') reloadInterviewHistory();
+                    break;
+                case 'revision':
+                    if (typeof reloadRevisionQueue === 'function') reloadRevisionQueue();
+                    break;
+                case 'reports':
+                    if (typeof reloadPortfolioPreview === 'function') reloadPortfolioPreview();
+                    break;
+                case 'all':
+                    reloadCommandCenter();
+                    break;
+            }
+        }
+
+        async function reloadCommandCenter() {
+            try {
+                const res = await fetch('/api/command-center');
+                if (!res.ok) {
+                    console.warn('Failed to load command center overview:', res.status);
+                    return;
+                }
+                const data = await res.json();
+                renderCommandCenter(data);
+            } catch (err) {
+                console.error('Error fetching command center data:', err);
+            }
+        }
+
+        function renderCommandCenter(data) {
+            if (!data) return;
+
+            // 1. Unified Action Flow Hero Banner
+            if (data.primary_action) {
+                currentPrimaryAction = data.primary_action;
+                const act = data.primary_action;
+
+                const iconElem = document.getElementById('uafIcon');
+                const badgeElem = document.getElementById('uafPriorityBadge');
+                const titleElem = document.getElementById('uafTitle');
+                const descElem = document.getElementById('uafDescription');
+                const evElem = document.getElementById('uafEvidence');
+                const ctaBtn = document.getElementById('uafCtaBtn');
+
+                if (titleElem) titleElem.textContent = act.title || 'Recommended Action';
+                if (descElem) descElem.textContent = act.description || '';
+                if (evElem) evElem.textContent = act.evidence ? `Evidence: ${act.evidence}` : (act.reason ? `Rationale: ${act.reason}` : '');
+                if (ctaBtn) ctaBtn.textContent = act.cta_label || 'Take Action';
+
+                const prio = (act.priority || 'P2').toUpperCase();
+                if (badgeElem) {
+                    badgeElem.textContent = prio;
+                    if (prio === 'P0') {
+                        badgeElem.style.background = 'rgba(239, 68, 68, 0.25)';
+                        badgeElem.style.color = '#fca5a5';
+                    } else if (prio === 'P1') {
+                        badgeElem.style.background = 'rgba(245, 158, 11, 0.25)';
+                        badgeElem.style.color = '#fcd34d';
+                    } else {
+                        badgeElem.style.background = 'rgba(59, 130, 246, 0.25)';
+                        badgeElem.style.color = '#93c5fd';
+                    }
+                }
+
+                if (iconElem) {
+                    const at = act.action_type || '';
+                    if (at.includes('continue') || at.includes('resume') || at.includes('start')) {
+                        iconElem.textContent = '⚡';
+                    } else if (at.includes('proposal')) {
+                        iconElem.textContent = '🔄';
+                    } else if (at.includes('revision')) {
+                        iconElem.textContent = '🔁';
+                    } else if (at.includes('unresolved') || at.includes('failing')) {
+                        iconElem.textContent = '🐞';
+                    } else if (at.includes('skill_gap')) {
+                        iconElem.textContent = '🎯';
+                    } else {
+                        iconElem.textContent = '🚀';
+                    }
+                }
+            }
+
+            // 2. Tab Badges
+            const loopBadge = document.getElementById('tabLoopBadge');
+            const loopData = data.adaptive_learning || data.adaptive_loop;
+            if (loopBadge && loopData) {
+                const count = loopData.pending_proposals_count || 0;
+                if (count > 0) {
+                    loopBadge.textContent = count;
+                    loopBadge.style.display = 'inline-block';
+                } else {
+                    loopBadge.style.display = 'none';
+                }
+            }
+            const revBadge = document.getElementById('tabRevBadge');
+            if (revBadge && data.interview_prep) {
+                const count = data.interview_prep.overdue_revisions_count || 0;
+                if (count > 0) {
+                    revBadge.textContent = count;
+                    revBadge.style.display = 'inline-block';
+                } else {
+                    revBadge.style.display = 'none';
+                }
+            }
+
+            // 3. Overview Widgets
+            // Today's Learning
+            if (data.today_learning) {
+                const tl = data.today_learning;
+                const statusBadge = document.getElementById('ovTodayStatusBadge');
+                const titleElem = document.getElementById('ovTodayTitle');
+                const timeElem = document.getElementById('ovTodayTime');
+                const progElem = document.getElementById('ovTodayProgress');
+                const progBar = document.getElementById('ovTodayProgressBar');
+                const taskElem = document.getElementById('ovTodayCurrentTask');
+
+                const sessStatus = tl.status || tl.session_status || 'none';
+                if (statusBadge) statusBadge.textContent = sessStatus.toUpperCase();
+                if (titleElem) titleElem.textContent = tl.title || tl.session_title || 'No study session active today.';
+                
+                const spent = tl.elapsed_minutes !== undefined ? tl.elapsed_minutes : (tl.spent_minutes || 0);
+                const budget = tl.budget_minutes || 0;
+                if (timeElem) timeElem.textContent = `${spent} / ${budget}m`;
+                
+                const pct = Math.round(tl.completion_pct !== undefined ? tl.completion_pct : (tl.progress_percentage || 0));
+                if (progElem) progElem.textContent = `${pct}%`;
+                if (progBar) progBar.style.width = `${pct}%`;
+
+                if (taskElem) {
+                    if (tl.current_task) {
+                        taskElem.innerHTML = `Current Focus: <strong style="color: #6ee7b7;">${tl.current_task.title}</strong>`;
+                    } else if (tl.remaining_tasks_count > 0) {
+                        taskElem.innerHTML = `Next up: <strong>${tl.remaining_tasks_count} tasks remaining</strong>`;
+                    } else if (sessStatus === 'completed') {
+                        taskElem.innerHTML = `<span style="color: #6ee7b7;">✓ Session Completed (${tl.completed_tasks_count || 0} tasks done)</span>`;
+                    } else {
+                        taskElem.innerHTML = `Current Focus: <strong>None</strong>`;
+                    }
+                }
+            }
+
+            // My Skill Focus
+            if (data.skill_focus) {
+                const sf = data.skill_focus;
+                const topTopic = document.getElementById('ovSkillTopTopic');
+                const topDiff = document.getElementById('ovSkillTopDiff');
+                const evText = document.getElementById('ovSkillEvidence');
+                const suggProb = document.getElementById('ovSkillSuggestedProblem');
+
+                if (topTopic) topTopic.textContent = sf.top_gap_topic || (sf.highest_priority_gaps && sf.highest_priority_gaps[0]?.topic) || 'General';
+                if (topDiff) topDiff.textContent = ((sf.top_gap_priority || (sf.highest_priority_gaps && sf.highest_priority_gaps[0]?.priority)) || 'MEDIUM').toUpperCase();
+                if (evText) evText.textContent = sf.top_gap_evidence || 'Evidence analyzed across local session history.';
+                if (suggProb) suggProb.textContent = sf.recommended_problem_id || sf.suggested_next_problem || 'two-sum';
+            }
+
+            // Adaptive Learning Loop
+            const al = data.adaptive_learning || data.adaptive_loop;
+            if (al) {
+                const phaseBadge = document.getElementById('ovLoopPhaseBadge');
+                const propCount = document.getElementById('ovLoopProposalsCount');
+                const evalElem = document.getElementById('ovLoopLastEval');
+                const summText = document.getElementById('ovLoopSummaryText');
+
+                if (phaseBadge) phaseBadge.textContent = (al.phase || al.loop_status || 'DIAGNOSIS').toUpperCase();
+                const c = al.pending_proposals_count || 0;
+                if (propCount) {
+                    propCount.textContent = `${c} awaiting review`;
+                    propCount.style.color = c > 0 ? '#fde047' : '#94a3b8';
+                }
+                if (evalElem && al.latest_evaluation) {
+                    evalElem.textContent = `Latest evaluation: ${al.latest_evaluation.replace('T', ' ').substring(0, 16)}`;
+                }
+                if (summText) {
+                    summText.textContent = c > 0 
+                        ? `${c} active plan adjustment(s) require explicit acceptance.` 
+                        : 'Plan is aligned with current verified coding evidence.';
+                }
+            }
+
+            // Interview & Preparation
+            if (data.interview_prep) {
+                const ip = data.interview_prep;
+                const planTitle = document.getElementById('ovPlanTitle');
+                const planTasks = document.getElementById('ovPlanTasks');
+                const overdueRev = document.getElementById('ovOverdueRevisions');
+                const progBar = document.getElementById('ovPlanProgressBar');
+
+                if (ip.active_plan) {
+                    if (planTitle) planTitle.textContent = ip.active_plan.title || 'Active Preparation Plan';
+                    if (planTasks) planTasks.textContent = `${ip.active_plan.completed_tasks || 0} / ${ip.active_plan.total_tasks || 0}`;
+                    const pct = Math.round(ip.active_plan.completion_pct || 0);
+                    if (progBar) progBar.style.width = `${pct}%`;
+                } else {
+                    if (planTitle) planTitle.textContent = ip.active_plan_title || 'No active preparation plan.';
+                    if (planTasks) planTasks.textContent = `${ip.completed_planner_tasks || 0} / ${ip.total_planner_tasks || 0}`;
+                    const totalT = ip.total_planner_tasks || 0;
+                    const doneT = ip.completed_planner_tasks || 0;
+                    const planPct = totalT > 0 ? Math.round((doneT / totalT) * 100) : 0;
+                    if (progBar) progBar.style.width = `${planPct}%`;
+                }
+                if (overdueRev) overdueRev.textContent = ip.overdue_revisions_count || 0;
+            }
+
+            // Coding Performance
+            const oa = data.overview_stats || data.coding_performance || data.overall_activity;
+            if (oa) {
+                const fpass = document.getElementById('ovFirstPassRate');
+                const acc = document.getElementById('ovOverallAccuracy');
+                const langElem = document.getElementById('ovLanguageBreakdown');
+
+                const fRate = oa.first_attempt_pass_rate_pct !== undefined ? oa.first_attempt_pass_rate_pct : ((oa.first_attempt_pass_rate || 0) * 100);
+                if (fpass) fpass.textContent = `${fRate.toFixed(1)}%`;
+                
+                const accRate = oa.pass_rate_pct !== undefined ? oa.pass_rate_pct : (oa.total_attempts > 0 ? (oa.passed_attempts / oa.total_attempts * 100) : 0);
+                if (acc) acc.textContent = `${accRate.toFixed(1)}%`;
+
+                const langs = oa.languages || oa.language_distribution;
+                if (langElem && langs) {
+                    const lNames = Object.keys(langs);
+                    if (lNames.length > 0) {
+                        langElem.textContent = `Languages: ${lNames.join(', ')}`;
+                    }
+                }
+            }
+
+            // Recent Activity Stream
+            const streamList = document.getElementById('ovRecentActivityList');
+            if (streamList && data.recent_activity) {
+                if (data.recent_activity.length === 0) {
+                    streamList.innerHTML = '<div style="padding: 10px 0; color: var(--text-muted); text-align: center;">No recent activities recorded yet.</div>';
+                } else {
+                    let html = '';
+                    data.recent_activity.slice(0, 8).forEach(item => {
+                        const icon = item.type === 'attempt' ? '⚡'
+                            : item.activity_type === 'practice_session' ? '📅' 
+                            : item.activity_type === 'interview' ? '💼' 
+                            : '📋';
+                        const timeStr = item.timestamp ? item.timestamp.replace('T', ' ').substring(0, 16) : '';
+                        html += `
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span>${icon}</span>
+                                <span style="color: #cbd5e1;">${item.title || item.activity_type || item.type}</span>
+                            </div>
+                            <span style="color: var(--text-muted); font-size: 0.7rem;">${timeStr}</span>
+                        </div>
+                        `;
+                    });
+                    streamList.innerHTML = html;
+                }
+            }
+        }
+
+        function executePrimaryAction() {
+            if (!currentPrimaryAction) {
+                switchTab('daily-practice');
+                return;
+            }
+            const act = currentPrimaryAction;
+            if (act.action_type === 'resume_session' || act.action_type === 'start_session') {
+                switchTab('daily-practice');
+            } else if (act.action_type === 'review_proposal') {
+                switchTab('adaptive-learning');
+            } else if (act.action_type === 'review_spaced_revision') {
+                switchTab('revision');
+            } else if (act.action_type === 'resolve_failing_problem' || act.action_type === 'practice_skill_gap') {
+                if (act.metadata && act.metadata.problem_id) {
+                    if (typeof openProblemInWorkspace === 'function') {
+                        openProblemInWorkspace(act.metadata.problem_id);
+                    }
+                } else {
+                    switchTab('skills');
+                }
+            } else {
+                switchTab('daily-practice');
+            }
+        }
+
+        // Initialize Coach, Revision, Goals, Roadmap, Daily Mission, Workspace, Portfolio, Interview, Analytics, and Command Center on window load
         window.addEventListener("DOMContentLoaded", () => {
-            initCoach();
-            reloadRevisionQueue();
-            reloadGoalsAndMilestones();
-            reloadRoadmapData();
-            reloadDailyMission();
-            openProblemInWorkspace("two-sum");
-            reloadPortfolioPreview();
-            reloadInterviewState();
-            reloadInterviewHistory();
-            reloadInterviewAnalytics();
-            reloadPreparationPlanner();
-            reloadActivePracticeSession();
-            reloadCodingBehavior();
-            reloadSkillGaps();
-            reloadLearningLoop();
-            reloadDailyPractice();
+            // Setup hash listener for URL navigation
+            window.addEventListener('hashchange', () => {
+                const target = window.location.hash.replace('#', '') || 'overview';
+                switchTab(target);
+            });
+
+            // Initial view
+            const initialTab = window.location.hash.replace('#', '') || 'overview';
+            switchTab(initialTab);
+
+            // Resilient background loading of all subsystems with Promise.allSettled
+            Promise.allSettled([
+                reloadCommandCenter(),
+                initCoach(),
+                reloadRevisionQueue(),
+                reloadGoalsAndMilestones(),
+                reloadRoadmapData(),
+                reloadDailyMission(),
+                openProblemInWorkspace("two-sum"),
+                reloadPortfolioPreview(),
+                reloadInterviewState(),
+                reloadInterviewHistory(),
+                reloadInterviewAnalytics(),
+                reloadPreparationPlanner(),
+                reloadActivePracticeSession(),
+                reloadCodingBehavior(),
+                reloadSkillGaps(),
+                reloadLearningLoop(),
+                reloadDailyPractice(),
+            ]).then(results => {
+                const failed = results.filter(r => r.status === 'rejected');
+                if (failed.length > 0) {
+                    console.warn(`Command Center background initialization completed with ${failed.length} non-fatal warning(s).`);
+                }
+            }).catch(e => console.warn("Background load error:", e));
         });
 
         // =========================================================================
@@ -8575,6 +9204,38 @@ def create_app(
             return jsonify(asdict(loop_report)), 200
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
+
+    # =========================================================================
+    # Milestone 6.3.27: Unified Learning Command Center Endpoints
+    # =========================================================================
+
+    @app.route("/api/command-center")
+    def api_command_center():
+        """Get unified command center overview aggregating all learning subsystems."""
+        mgr = CommandCenterManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            overview = mgr.get_overview()
+            from dataclasses import asdict
+            return jsonify(asdict(overview)), 200
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/command-center/action")
+    def api_command_center_action():
+        """Derive the deterministic primary action based strictly on evidence."""
+        mgr = CommandCenterManager(
+            tracking_db_path=tracker_path,
+            progress_db_path=db_path,
+        )
+        try:
+            action = mgr.derive_primary_action()
+            from dataclasses import asdict
+            return jsonify(asdict(action)), 200
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
 
     return app
 

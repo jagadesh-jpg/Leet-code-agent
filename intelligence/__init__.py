@@ -185,6 +185,12 @@ from intelligence.daily_practice import (
     DailyPracticeTaskStatus,
     DailyPracticeTaskType,
 )
+from intelligence.command_center import (
+    CommandCenterManager,
+    CommandCenterOverview,
+    PrimaryAction,
+    PrimaryActionType,
+)
 from intelligence.preparation_planner import (
     IntensityLevel,
     PlanProgress,
@@ -358,4 +364,8 @@ __all__ = [
     "DailyPracticeSessionStatus",
     "DailyPracticeTaskType",
     "DailyPracticeProgress",
+    "CommandCenterManager",
+    "CommandCenterOverview",
+    "PrimaryAction",
+    "PrimaryActionType",
 ]
